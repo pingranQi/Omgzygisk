@@ -12,6 +12,7 @@
 #include "daemon.hpp"
 #include "logging.hpp"
 #include "module_loader.hpp"
+#include "zygisk.hpp"
 #include "zn_api.hpp"
 
 namespace zn {
@@ -39,7 +40,7 @@ std::string getProcessName(const std::string &path) {
     return slash == std::string::npos ? path : path.substr(slash + 1);
 }
 
-bool loadEntry(zygiskd::ZnPlanEntry &entry) {
+bool loadEntry(zygiskd::ZnPlanEntry &entry, size_t &system_loaded) {
     // Share the existing CSOLoader-first module-loading seam with classic
     // Zygisk/FN modules. ZN's public entry is a data object, so only the
     // resolved address differs; the mapped image and lifetime policy are the
@@ -54,6 +55,7 @@ bool loadEntry(zygiskd::ZnPlanEntry &entry) {
     // Pin shared custom-linker TLS before entering module code. The ZN DSO
     // remains resident for this process lifetime.
     if (loaded.custom) RetainCustomLoaderForProcessLifetime();
+    else ++system_loaded;
 
     auto *module = reinterpret_cast<ZygiskNextModule *>(loaded.entry);
     if (!module || !module->onModuleLoaded || module->target_api_version < 3 ||
@@ -101,9 +103,18 @@ void loadAllModules(unsigned char connect_retry) {
 
     auto plan = zygiskd::GetZnPlan(process_name, process_path, connect_retry);
     LOGI("ZN: daemon returned %zu matching module(s)", plan.size());
+    size_t system_loaded = 0;
     for (auto &entry : plan) {
         if (entry.memfd < 0) continue;
-        (void) loadEntry(entry);
+        (void) loadEntry(entry, system_loaded);
+    }
+
+    // CSOLoader-loaded modules never enter the system linker's solist. Only
+    // android_dlopen_ext fallback modules need linker-record cleanup.
+    if (system_loaded > 0) {
+        LOGI("ZN: cleaning linker records for %zu system-linker module(s)",
+             system_loaded);
+        clean_linker_trace("jit-cache-zygisk", system_loaded, system_loaded, true);
     }
 }
 

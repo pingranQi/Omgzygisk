@@ -463,8 +463,12 @@ static bool trace_with_seize(int pid, bool *seize_syscall_failed,
     ptrace(PTRACE_DETACH, pid, 0, zygote_target ? 0 : SIGCONT);                                     \
     return false;
 
-    // Wait for the initial Seize stop
-    if (!wait_for_process(pid, &status)) return false;
+    // Wait for the initial Seize stop. If waitpid fails after PTRACE_SEIZE,
+    // do not leave an optional Native ZN target traced or stopped.
+    if (!wait_for_process(pid, &status)) {
+        ptrace(PTRACE_DETACH, pid, 0, zygote_target ? 0 : SIGCONT);
+        return false;
+    }
 
     // SEIZE usually stops with SIGSTOP + PTRACE_EVENT_STOP
     if (STOPPED_WITH(SIGSTOP, PTRACE_EVENT_STOP)) {
@@ -486,14 +490,20 @@ static bool trace_with_seize(int pid, bool *seize_syscall_failed,
             PLOGE("ptrace(PTRACE_CONT) failed");
             BAIL_AND_DETACH
         }
-        if (!wait_for_process(pid, &status)) return false;
+        if (!wait_for_process(pid, &status)) {
+            ptrace(PTRACE_DETACH, pid, 0, zygote_target ? 0 : SIGCONT);
+            return false;
+        }
 
         // 4. Expect SIGTRAP (caused by the signal interruption in Seize mode)
         if (STOPPED_WITH(SIGTRAP, PTRACE_EVENT_STOP)) {
             if (ptrace(PTRACE_CONT, pid, 0, 0) == -1) {
                 BAIL_AND_DETACH
             }
-            if (!wait_for_process(pid, &status)) return false;
+            if (!wait_for_process(pid, &status)) {
+                ptrace(PTRACE_DETACH, pid, 0, zygote_target ? 0 : SIGCONT);
+                return false;
+            }
 
             // 5. Expect the actual SIGCONT delivery
             if (STOPPED_WITH(SIGCONT, 0)) {
@@ -531,8 +541,8 @@ static bool trace_with_attach(int pid, const char *entry_symbol) {
 
     int status;
     if (!wait_for_process(pid, &status)) {
-        // If wait fails, we must try to detach or the process hangs forever
-        ptrace(PTRACE_DETACH, pid, 0, 0);
+        // If wait fails, detach and resume optional Native ZN targets.
+        ptrace(PTRACE_DETACH, pid, 0, zygote_target ? 0 : SIGCONT);
         return false;
     }
 

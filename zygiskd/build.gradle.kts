@@ -54,7 +54,7 @@ listOf("Debug", "Release").forEach { variantCap ->
             cargoArgs += listOf("build", "--locked", "--target-dir", targetDir.absolutePath)
             if (isRelease) cargoArgs += "--release"
 
-            providers.exec {
+            val cargoOutput = providers.exec {
                 workingDir = projectDir
                 environment("ANDROID_NDK_HOME", ndkFile.absolutePath)
                 environment("MIN_APATCH_VERSION", minAPatchVersion.toString())
@@ -63,7 +63,13 @@ listOf("Debug", "Release").forEach { variantCap ->
                 environment("MIN_MAGISK_VERSION", minMagiskVersion.toString())
                 environment("ZKSU_VERSION", "$verName-$verCode-$commitHash-$profileName")
                 commandLine(cargoArgs)
-            }.result.get().assertNormalExitValue()
+            }
+            val cargoResult = cargoOutput.result.get()
+            if (cargoResult.exitValue != 0) {
+                logger.error("cargo-ndk stdout:\n${cargoOutput.standardOutput.asText.get()}")
+                logger.error("cargo-ndk stderr:\n${cargoOutput.standardError.asText.get()}")
+            }
+            cargoResult.assertNormalExitValue()
 
             // Strip each binary, keeping a detached debug-symbol file linked back via gnu-debuglink.
             abiToTriple.forEach { (abi, triple) ->
