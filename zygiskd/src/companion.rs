@@ -11,7 +11,7 @@ use crate::dl;
 use std::ffi::CString;
 use crate::utils::{UnixStreamExt, is_socket_alive};
 use anyhow::{Context, Result};
-use log::{debug, error, info, trace};
+use log::{debug, error, info, trace, warn};
 use passfd::FdPassingExt;
 use rustix::fs::fstat;
 use std::ffi::c_void;
