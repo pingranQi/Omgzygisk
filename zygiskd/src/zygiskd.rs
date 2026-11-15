@@ -1504,6 +1504,20 @@ fn spawn_companion(name: &str, lib_fd: RawFd) -> Result<Option<UnixStream>> {
 // --- Native ZN manifest and delivery -----------------------------------------
 
 const MAX_ZN_MODULES_PER_PROCESS: usize = 128;
+const MAX_ZN_STRING_BYTES: usize = 4096;
+
+/// Read a Native ZN protocol string with a strict size bound. The general
+/// daemon protocol reader predates untrusted exec-time clients and is
+/// intentionally not reused for these newly exposed fields.
+fn read_zn_string(stream: &mut UnixStream) -> Result<String> {
+    let length = stream.read_usize()?;
+    if length > MAX_ZN_STRING_BYTES {
+        bail!("Native ZN string exceeds {} bytes", MAX_ZN_STRING_BYTES);
+    }
+    let mut bytes = vec![0u8; length];
+    stream.read_exact(&mut bytes)?;
+    Ok(String::from_utf8(bytes)?)
+}
 
 fn peer_credentials(stream: &UnixStream) -> Option<libc::ucred> {
     let mut credentials: libc::ucred = unsafe { std::mem::zeroed() };
@@ -1639,17 +1653,16 @@ fn scan_zn_manifest_for_target(
 }
 
 fn handle_check_zn_target(stream: &mut UnixStream) -> Result<()> {
-    let process_name = stream.read_string()?;
-    let process_path = stream.read_string()?;
-
-    // Only the root init monitor may ask about a different process. The
-    // injector inside the matched process uses GetZnPlan, whose peer PID is
-    // resolved from SO_PEERCRED instead of trusting a caller-supplied path.
+    // Only the root init monitor may ask about a different process. Authenticate
+    // before accepting attacker-controlled strings from the world-writable socket.
     if peer_credentials(stream).map(|credentials| credentials.uid) != Some(0) {
         warn!("CheckZnTarget: rejecting non-root peer");
         stream.write_u8(0)?;
         return Ok(());
     }
+
+    let process_name = read_zn_string(stream)?;
+    let process_path = read_zn_string(stream)?;
 
     let matched = scan_zn_manifest_for_target(&process_name, &process_path)
         .map(|entries| !entries.is_empty())
@@ -1662,8 +1675,8 @@ fn handle_check_zn_target(stream: &mut UnixStream) -> Result<()> {
 }
 
 fn handle_get_zn_plan(stream: &mut UnixStream) -> Result<()> {
-    let requested_name = stream.read_string()?;
-    let requested_path = stream.read_string()?;
+    let requested_name = read_zn_string(stream)?;
+    let requested_path = read_zn_string(stream)?;
     let actual_path = match executable_path_for_peer(stream) {
         Ok(path) => path,
         Err(error) => {
@@ -1755,7 +1768,7 @@ fn handle_request_zn_companion_socket(
     stream: &mut UnixStream,
     context: &AppContext,
 ) -> Result<()> {
-    let requested_path = PathBuf::from(stream.read_string()?);
+    let requested_path = PathBuf::from(read_zn_string(stream)?);
     let actual_path = match executable_path_for_peer(stream) {
         Ok(path) => path,
         Err(error) => {
@@ -1828,23 +1841,46 @@ fn handle_request_zn_companion_socket(
 }
 
 fn handle_report_zn_module(stream: &mut UnixStream) -> Result<()> {
-    let path = PathBuf::from(stream.read_string()?);
+    let path = PathBuf::from(read_zn_string(stream)?);
     let injected = stream.read_u8()? != 0;
-    let modules_root = fs::canonicalize(constants::PATH_MODULES_DIR)?;
-    match fs::canonicalize(&path) {
-        Ok(canonical) if canonical.starts_with(&modules_root) => {
-            info!(
-                "Native ZN module {} {}",
-                canonical.display(),
-                if injected { "loaded" } else { "failed to load" }
-            );
-            stream.write_u8(1)?;
+    let actual_path = match executable_path_for_peer(stream) {
+        Ok(path) => path,
+        Err(error) => {
+            warn!("Native ZN report rejected: {}", error);
+            stream.write_u8(0)?;
+            return Ok(());
         }
+    };
+    let process_name = process_name_from_path(&actual_path);
+    let modules_root = fs::canonicalize(constants::PATH_MODULES_DIR)?;
+    let canonical = match fs::canonicalize(&path) {
+        Ok(canonical) if canonical.starts_with(&modules_root) => canonical,
         _ => {
             warn!("Ignoring Native ZN status for an external path: {}", path.display());
             stream.write_u8(0)?;
+            return Ok(());
         }
+    };
+    let authorized = scan_zn_manifest_for_target(&process_name, &actual_path)?
+        .iter()
+        .any(|(manifest_path, _)| *manifest_path == canonical);
+    if !authorized {
+        warn!(
+            "Native ZN status rejected: {} is not declared for {}",
+            canonical.display(),
+            process_name
+        );
+        stream.write_u8(0)?;
+        return Ok(());
     }
+
+    info!(
+        "Native ZN module {} {} for {}",
+        canonical.display(),
+        if injected { "loaded" } else { "failed to load" },
+        process_name
+    );
+    stream.write_u8(1)?;
     Ok(())
 }
 
