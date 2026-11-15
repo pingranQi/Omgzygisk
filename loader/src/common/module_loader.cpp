@@ -49,8 +49,8 @@ static LoadedModule LoadViaSystemLinker(int memfd, const char *entry_symbol) {
     void *entry = dlsym(handle, entry_symbol);
     if (!entry) {
         LOGW("module handle %p has no `%s` symbol", handle, entry_symbol);
-        // Leave handle set so a caller could still close it; entry stays null,
-        // so the module is treated as unusable (operator bool == false).
+        dlclose(handle);
+        return out;
     }
 
     out.handle = handle;

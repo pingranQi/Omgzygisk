@@ -39,10 +39,10 @@ void zn_entry(void*, size_t, const char* path, bool) {
     LOGI("Native ZN process bootstrap, version %s", ZKSU_VERSION);
     zygiskd::Init(path);
 
-    if (!zygiskd::PingHeartbeat()) {
-        LOGE("zygisk daemon is not running; Native ZN loading skipped");
-        return;
-    }
+    // The exec monitor ensures zygiskd is available before handing this
+    // process to the injector. Do not send PingHeartbeat here: that command
+    // intentionally updates Zygote-injected state, not Native ZN status.
+
 
     // The runtime is exposed only inside HyperOS's native Rust spawner.
     if (zn::isHyosSpawner()) {

@@ -34,12 +34,13 @@ int g_hyos_module_count = 0;
 bool g_hyos_runtime = false;
 pid_t g_spawner_pid = 0;
 std::atomic<bool> g_hyos_fired{false};
-std::atomic<bool> g_hyos_hooks_installed{false};
+std::atomic<bool> g_hyos_hooks_installing{false};
+std::atomic<bool> g_hyos_atfork_registered{false};
 std::atomic<bool> g_hyos_warned{false};
 std::atomic<bool> g_process_name_captured{false};
 char g_process_name[256]{};
 
-using HyosSetcontextFn = int (*)(uid_t, bool, const char *, const char *);
+using HyosSetcontextFn = int (*)(uid_t, int, const char *, const char *);
 using HyosSetnameFn = int (*)(pthread_t, const char *);
 HyosSetcontextFn g_orig_setcontext = nullptr;
 HyosSetnameFn g_orig_setname = nullptr;
@@ -97,12 +98,12 @@ void hyosDeliverAppSpecialized(const char *package_name, const char *se_info) {
     }
 }
 
-int hyosSetcontextHook(uid_t uid, bool is_system_server, const char *se_info,
+int hyosSetcontextHook(uid_t uid, int is_system_server, const char *se_info,
                        const char *package_name) {
     if (!g_orig_setcontext) return -1;
     const int result = g_orig_setcontext(uid, is_system_server, se_info, package_name);
-    if (result == 0 && !is_system_server) {
-        hyosDeliverAppSpecialized(package_name, se_info);
+    if (result == 0) {
+        // hyosDeliverAppSpecialized filters the spawner parent using raw getpid.
     } else if (result != 0 && hyosInChild() &&
                !g_hyos_fired.load(std::memory_order_relaxed)) {
         LOGW("HYOS: selinux_android_setcontext failed (%d)", result);
@@ -143,9 +144,14 @@ bool hookSpawnerPlt(const char *symbol, void *replacement, void **original) {
 }
 
 void hyosInstallHooks() {
-    if (g_hyos_hooks_installed.exchange(true, std::memory_order_acq_rel)) return;
+    bool expected = false;
+    if (!g_hyos_hooks_installing.compare_exchange_strong(
+            expected, true, std::memory_order_acq_rel)) {
+        return;
+    }
 
-    if (!hookSpawnerPlt("selinux_android_setcontext",
+    if (!g_orig_setcontext &&
+        !hookSpawnerPlt("selinux_android_setcontext",
                         reinterpret_cast<void *>(hyosSetcontextHook),
                         reinterpret_cast<void **>(&g_orig_setcontext))) {
         void *function = dlsym(RTLD_DEFAULT, "selinux_android_setcontext");
@@ -160,7 +166,8 @@ void hyosInstallHooks() {
         }
     }
 
-    if (!hookSpawnerPlt("pthread_setname_np", reinterpret_cast<void *>(hyosSetnameHook),
+    if (!g_orig_setname &&
+        !hookSpawnerPlt("pthread_setname_np", reinterpret_cast<void *>(hyosSetnameHook),
                         reinterpret_cast<void **>(&g_orig_setname))) {
         void *function = dlsym(RTLD_DEFAULT, "pthread_setname_np");
         if (!function) {
@@ -176,6 +183,13 @@ void hyosInstallHooks() {
 
     if (!g_orig_setcontext && !g_hyos_warned.exchange(true)) {
         LOGW("HYOS: selinux_android_setcontext hook unavailable; specialize callbacks will not fire");
+    }
+    g_hyos_hooks_installing.store(false, std::memory_order_release);
+}
+
+void hyosAtForkPrepare() {
+    if (g_hyos_module_count > 0 && (!g_orig_setcontext || !g_orig_setname)) {
+        hyosInstallHooks();
     }
 }
 
@@ -295,7 +309,18 @@ int api_hyosRegisterModule(const void *opaque_module) {
         g_hyos_modules[g_hyos_module_count++] = *module;
     }
 
-    hyosInstallHooks();
+    if (!hyosInChild()) {
+        bool expected = false;
+        if (g_hyos_atfork_registered.compare_exchange_strong(
+                expected, true, std::memory_order_acq_rel)) {
+            const int result = pthread_atfork(hyosAtForkPrepare, nullptr, nullptr);
+            if (result != 0) {
+                g_hyos_atfork_registered.store(false, std::memory_order_release);
+                LOGW("HYOS: pthread_atfork registration failed (%d)", result);
+            }
+        }
+        hyosInstallHooks();
+    }
     LOGI("HYOS: registered app-specialize callback");
     return ZN_SUCCESS;
 }
@@ -340,6 +365,9 @@ const ZygiskNextAPI *getApiForVersion(int target_api_version) {
 }
 
 bool isHyosSpawner() {
+#if !defined(__LP64__)
+    return false;
+#else
     char path[PATH_MAX]{};
     const ssize_t count = readlink("/proc/self/exe", path, sizeof(path) - 1);
     if (count <= 0) return false;
@@ -349,6 +377,7 @@ bool isHyosSpawner() {
     if (executable.ends_with(deleted)) executable.remove_suffix(deleted.size());
     return executable == "/system_ext/bin/hyos_spawner" ||
            executable.ends_with("/hyos_spawner");
+#endif
 }
 
 void initHyosRuntime() {

@@ -51,8 +51,12 @@ bool loadEntry(zygiskd::ZnPlanEntry &entry) {
         return false;
     }
 
+    // Pin shared custom-linker TLS before entering module code. The ZN DSO
+    // remains resident for this process lifetime.
+    if (loaded.custom) RetainCustomLoaderForProcessLifetime();
+
     auto *module = reinterpret_cast<ZygiskNextModule *>(loaded.entry);
-    if (!module || !module->onModuleLoaded || module->target_api_version < 1 ||
+    if (!module || !module->onModuleLoaded || module->target_api_version < 3 ||
         module->target_api_version > ZYGISK_NEXT_API_VERSION) {
         LOGW("ZN: %s has no compatible zn_module export", entry.lib_path.c_str());
         (void) UnloadModule(loaded.handle, loaded.custom);
@@ -74,7 +78,6 @@ bool loadEntry(zygiskd::ZnPlanEntry &entry) {
         // process lifetime. If CSOLoader produced this image, pin its shared
         // process-global TLS state so the classic Zygisk full-unload path
         // cannot tear it down while this module still has live code/hooks.
-        if (loaded.custom) RetainCustomLoaderForProcessLifetime();
         std::lock_guard<std::mutex> lock(g_loaded_mutex);
         g_loaded_modules.push_back(loaded);
         g_module_handles.push_back(self);
