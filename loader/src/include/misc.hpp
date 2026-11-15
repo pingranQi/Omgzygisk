@@ -4,6 +4,8 @@
 
 #include <string_view>
 
+#include "parse_int.h"
+
 // Constants for Android Isolated UID range.
 // Reference:
 // https://cs.android.com/android/platform/superproject/main/+/main:system/core/libcutils/include/private/android_filesystem_config.h
@@ -51,4 +53,7 @@ private:
     pthread_mutex_t* mutex;
 };
 
-int parse_int(std::string_view s);
+/* Preserve the existing C++ call surface while keeping the implementation in C. */
+inline int parse_int(std::string_view s) {
+    return onyx_parse_int(s.data(), s.size());
+}
