@@ -188,7 +188,9 @@ export function StatusView({ snapshot }: StatusViewProps) {
 				</Card>
 			</div>
 
-			<SectionHeader>{tr("status_zygote_section", "Zygote (ARM64)")}</SectionHeader>
+			<SectionHeader>
+				{tr("status_zygote_section", "Zygote (ARM64)")}
+			</SectionHeader>
 			<div className="px-4">
 				<Card className="flex flex-col gap-4">
 					<StatusField
