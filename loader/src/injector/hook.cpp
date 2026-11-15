@@ -122,14 +122,9 @@ DCL_HOOK_FUNC(ssize_t, read, int fd, void *buf, size_t count) {
     return ret;
 }
 
-// Set up the app's private mount namespace according to the selected mount
-// mode (see module.hpp / zygiskd's ProcessFlags):
-//   • global        — every app keeps module mounts; do nothing here.
-//   • namespace swap — denylisted apps setns into the cached clean namespace;
-//                      trusted apps inherit the (never-unmounted) zygote.
-//   • revert only    — modules were unmounted from zygote already, so trusted
-//                      apps setns back into Root to regain them; denylisted
-//                      apps simply inherit the clean zygote (no setns).
+// Per-app mount isolation is handled in ZygiskContext::app_specialize_pre(),
+// after fork and before module callbacks. Do not alter mount state from this
+// Zygote-side PLT hook: sibling apps must inherit the original mount tree.
 
 DCL_HOOK_FUNC(int, property_get, const char *key, char *value, const char *default_value) {
     if (!g_hook->skip_hooking_unloader) {
