@@ -162,7 +162,7 @@ impl MountNamespaceManager {
         // KernelPatch based) may report "APatch" or "kpatch". Unmounting the
         // union keeps the clean namespace pristine regardless of which root
         // solution is active.
-        let root_sources: &[&str] = &["magisk", "KSU", "APatch", "kpatch"];
+        let root_sources: &[&str] = &["magisk", "KSU", "YukiSU", "APatch", "kpatch", "YukiZygisk"];
 
         let ksu_module_source: Option<String> =
             if matches!(root_impl::get(), root_impl::RootImpl::KernelSU) {
@@ -180,7 +180,7 @@ impl MountNamespaceManager {
             let mount_source_str = info.mount_source.as_deref();
 
             let should_unmount = info.root.starts_with("/adb/modules")
-                || path_str.starts_with("/data/adb/modules")
+                || path_str.starts_with("/data/adb/")
                 || (mount_source_str.is_some()
                     && root_sources.contains(&mount_source_str.unwrap()))
                 || (ksu_module_source.is_some() && info.mount_source == ksu_module_source);

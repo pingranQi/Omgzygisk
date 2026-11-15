@@ -33,50 +33,78 @@ void clean_linker_trace(const char *path, size_t loaded_modules, size_t unloaded
     }
 }
 
-void spoof_virtual_maps(const char *path, bool clear_write_permission) {
-    // spoofing map path names is futile in Android, we do it simply
-    // to avoid trivial Zygisk detections based on string comparison.
-    for (auto &map : lsplt::MapInfo::Scan()) {
-        void *addr = (void *) map.start;
-        size_t size = map.end - map.start;
+static bool anonymize_mapping(void *address, size_t size, int original_perms,
+                               const char *label) {
+    // Preflight every permission before displacing the live file-backed VMA.
+    // If execmem policy rejects an executable anonymous mapping, keep the
+    // original mapping untouched.
+    const int copy_perms = original_perms | PROT_READ | PROT_WRITE;
+    void *copy = mmap(nullptr, size, copy_perms, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+    if (copy == MAP_FAILED) {
+        PLOGE("failed to preflight anonymous mapping for %s [%p, %p]", label, address,
+              static_cast<char *>(address) + size);
+        return false;
+    }
 
-        if (strstr(map.path.c_str(), path)) {
-            LOGV("spoofing entry path contaning string %s", map.path.c_str());
-            // Create an anonymous mapping to hold a copy of the original data
-            void *copy = mmap(nullptr, size, PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
-            if (copy == MAP_FAILED) {
-                LOGE("failed to backup block %s [%p, %p]", map.path.c_str(), addr,
-                     (void *) map.end);
-                continue;
-            }
-            // Ensure the original mapping is readable before copying
-            if ((map.perms & PROT_READ) == 0) {
-                mprotect(addr, size, PROT_READ);
-            }
-            memcpy(copy, addr, size);
-            // Overwrite the original mapping with our anonymous copy
-            if (mremap(copy, size, size, MREMAP_MAYMOVE | MREMAP_FIXED, addr) == MAP_FAILED) {
-                LOGE("mremap failed for %s [%p, %p]", map.path.c_str(), addr, (void *) map.end);
-            }
-            // The backup copy is now at the original address, we can unmap our temporary one.
-            // Note: The man page for mremap is ambiguous on whether the old mapping at 'copy'
-            // is unmapped. To be safe and avoid potential leaks, we explicitly unmap it.
-            munmap(copy, size);
-            // Restore the original permissions
-            mprotect(addr, size, map.perms);
+    const bool added_read = (original_perms & PROT_READ) == 0;
+    if (added_read && mprotect(address, size, original_perms | PROT_READ) != 0) {
+        PLOGE("failed to make source mapping readable for %s [%p, %p]", label, address,
+              static_cast<char *>(address) + size);
+        munmap(copy, size);
+        return false;
+    }
+
+    memcpy(copy, address, size);
+    if (added_read && mprotect(address, size, original_perms) != 0) {
+        PLOGE("failed to restore source mapping protection for %s [%p, %p]", label, address,
+              static_cast<char *>(address) + size);
+        munmap(copy, size);
+        return false;
+    }
+
+    if (mremap(copy, size, size, MREMAP_MAYMOVE | MREMAP_FIXED, address) == MAP_FAILED) {
+        PLOGE("mremap failed for %s [%p, %p]", label, address,
+              static_cast<char *>(address) + size);
+        munmap(copy, size);
+        return false;
+    }
+
+    if (mprotect(address, size, original_perms) != 0) {
+        PLOGE("failed to restore anonymous mapping protection for %s [%p, %p]", label,
+              address, static_cast<char *>(address) + size);
+        return false;
+    }
+
+    if ((original_perms & PROT_EXEC) != 0) {
+        auto *begin = static_cast<char *>(address);
+        __builtin___clear_cache(begin, begin + size);
+    }
+    return true;
+}
+
+void spoof_virtual_maps(const char *path, bool clear_write_permission) {
+    if (path == nullptr || path[0] == '\0') return;
+
+    for (auto &map : lsplt::MapInfo::Scan()) {
+        void *addr = reinterpret_cast<void *>(map.start);
+        const size_t size = map.end - map.start;
+
+        if (map.path.find(path) != std::string::npos) {
+            LOGV("anonymizing entry path containing string %s", map.path.c_str());
+            anonymize_mapping(addr, size, map.perms, map.path.c_str());
         }
 
-        if (clear_write_permission && map.path.size() > 0 &&
+        if (clear_write_permission && !map.path.empty() &&
             (map.perms & (PROT_READ | PROT_WRITE | PROT_EXEC)) ==
                 (PROT_READ | PROT_WRITE | PROT_EXEC)) {
             LOGV("clearing write permission for entry %s", map.path.c_str());
-            int new_perms = map.perms & ~PROT_WRITE;  // Remove the write permission
+            const int new_perms = map.perms & ~PROT_WRITE;
             if (mprotect(addr, size, new_perms) == -1) {
                 PLOGE("remove write permission from %s [%p, %p]", map.path.c_str(), addr,
-                      (void *) map.end);
+                      reinterpret_cast<void *>(map.end));
             } else {
                 LOGV("write permission removed from %s [%p, %p]", map.path.c_str(), addr,
-                     (void *) map.end);
+                     reinterpret_cast<void *>(map.end));
             }
         }
     }

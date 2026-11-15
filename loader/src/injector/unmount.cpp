@@ -8,6 +8,7 @@
 #include <fstream>    // For std::ifstream
 #include <sstream>    // For std::stringstream
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "logging.hpp"
@@ -16,6 +17,22 @@
 
 static bool starts_with(const std::string& str, const std::string& prefix) {
     return str.rfind(prefix, 0) == 0;
+}
+
+static std::string decode_mountinfo_field(const std::string& field) {
+    std::string decoded;
+    decoded.reserve(field.size());
+    for (size_t i = 0; i < field.size(); ++i) {
+        if (field[i] == '\\' && i + 3 < field.size()) {
+            const std::string_view escape(field.data() + i, 4);
+            if (escape == "\\040") { decoded.push_back(' '); i += 3; continue; }
+            if (escape == "\\011") { decoded.push_back('\t'); i += 3; continue; }
+            if (escape == "\\012") { decoded.push_back('\n'); i += 3; continue; }
+            if (escape == "\\134") { decoded.push_back('\\'); i += 3; continue; }
+        }
+        decoded.push_back(field[i]);
+    }
+    return decoded;
 }
 
 std::vector<mount_info> parse_mount_info(const char* pid) {
@@ -86,6 +103,10 @@ std::vector<mount_info> parse_mount_info(const char* pid) {
             info.fs_options = remaining_fs.substr(1);  // Trim leading space
         }
 
+        info.root = decode_mountinfo_field(info.root);
+        info.target = decode_mountinfo_field(info.target);
+        info.source = decode_mountinfo_field(info.source);
+        info.fs_options = decode_mountinfo_field(info.fs_options);
         info.raw_info = line;
         result.push_back(std::move(info));
     }
@@ -103,19 +124,11 @@ std::vector<mount_info> check_zygote_traces(uint32_t info_flags) {
         return traces;
     }
 
-    const char* mount_source_name = nullptr;
-    bool is_kernelsu = false;
-
-    if (info_flags & PROCESS_ROOT_IS_APATCH) {
-        mount_source_name = "APatch";
-    } else if (info_flags & PROCESS_ROOT_IS_KSU) {
-        mount_source_name = "KSU";
-        is_kernelsu = true;
-    } else if (info_flags & PROCESS_ROOT_IS_MAGISK) {
-        mount_source_name = "magisk";
-    } else {
-        LOGE("could not determine root implementation, aborting unmount.");
-        return traces;
+    const bool is_kernelsu = (info_flags & PROCESS_ROOT_IS_KSU) != 0;
+    const bool root_impl_known =
+        (info_flags & (PROCESS_ROOT_IS_APATCH | PROCESS_ROOT_IS_KSU | PROCESS_ROOT_IS_MAGISK)) != 0;
+    if (!root_impl_known) {
+        LOGV("root implementation flag unavailable; matching known mountinfo signatures.");
     }
 
     std::string kernel_su_module_source;
@@ -131,9 +144,15 @@ std::vector<mount_info> check_zygote_traces(uint32_t info_flags) {
     }
 
     for (const auto& info : mount_infos) {
+        const bool known_root_source =
+            info.source == "APatch" || info.source == "kpatch" || info.source == "KSU" ||
+            info.source == "YukiSU" || info.source == "YukiZygisk" || info.source == "magisk";
+        const bool root_backed_super_options =
+            info.fs_options.find("/adb/modules") != std::string::npos ||
+            info.fs_options.find("/data/adb/") != std::string::npos;
         const bool should_unmount =
-            starts_with(info.root, "/adb/modules") ||
-            starts_with(info.target, "/data/adb/modules") || (info.source == mount_source_name) ||
+            starts_with(info.root, "/adb/modules") || starts_with(info.target, "/data/adb/") ||
+            known_root_source || root_backed_super_options ||
             (!kernel_su_module_source.empty() && info.source == kernel_su_module_source);
 
         if (should_unmount) {
