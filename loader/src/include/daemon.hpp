@@ -80,6 +80,16 @@ struct FnModule {
           memfd(memfd) {}
 };
 
+/// A Native ZN library selected for the current executable.
+struct ZnPlanEntry {
+    std::string lib_path;
+    bool companion;
+    UniqueFd memfd;
+
+    inline ZnPlanEntry(std::string path, bool has_companion, int fd)
+        : lib_path(std::move(path)), companion(has_companion), memfd(fd) {}
+};
+
 enum class SocketAction {
     PingHeartbeat,
     GetProcessFlags,
@@ -95,6 +105,10 @@ enum class SocketAction {
     // not used by the loader, so their slots are skipped here.
     ReadFnModules = 12,
     GetFnModuleDir = 13,
+    CheckZnTarget = 14,
+    GetZnPlan = 15,
+    RequestZnCompanionSocket = 16,
+    ReportZnModule = 17,
 };
 
 enum class MountNamespace { Clean, Root };
@@ -112,6 +126,13 @@ std::vector<Module> ReadModules();
 std::vector<FnModule> ReadFnModules();
 
 int GetFnModuleDir(const std::string &id);
+
+bool CheckZnTarget(const std::string &process_name, const std::string &process_path);
+std::vector<ZnPlanEntry> GetZnPlan(const std::string &process_name,
+                                   const std::string &process_path,
+                                   uint8_t retry = 1);
+int ConnectZnCompanion(const std::string &library_path);
+void ReportZnModule(const std::string &library_path, bool injected);
 
 uint32_t GetProcessFlags(uid_t uid);
 

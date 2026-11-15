@@ -155,3 +155,82 @@ fn load_module_entry(fd: RawFd) -> Result<Option<ZygiskCompanionEntryFn>> {
         }
     }
 }
+
+
+// --- Native Zygisk Next companion support ------------------------------------
+
+#[repr(C)]
+struct ZygiskNextCompanionModule {
+    target_api_version: i32,
+    on_companion_loaded: Option<unsafe extern "C" fn()>,
+    on_module_connected: Option<unsafe extern "C" fn(i32)>,
+}
+
+/// Entry point for a Native ZN companion process.
+pub fn zn_entry(library_path: &str, fd: i32) {
+    info!("ZN companion started for {} (control fd={})", library_path, fd);
+    if let Err(error) = run_zn_companion(library_path, fd) {
+        error!("ZN companion for {} failed: {:#}", library_path, error);
+    }
+}
+
+fn run_zn_companion(library_path: &str, fd: i32) -> Result<()> {
+    use std::os::fd::IntoRawFd;
+
+    let mut control = unsafe { UnixStream::from_raw_fd(fd) };
+    let handle = match unsafe { dl::dlopen(library_path, libc::RTLD_NOW) } {
+        Ok(handle) => handle,
+        Err(error) => {
+            control.write_u8(0)?;
+            return Err(error).context("failed to dlopen Native ZN companion");
+        }
+    };
+
+    let symbol = CString::new("zn_companion_module")?;
+    let module_ptr = unsafe { libc::dlsym(handle, symbol.as_ptr()) };
+    if module_ptr.is_null() {
+        control.write_u8(0)?;
+        anyhow::bail!("{} does not export zn_companion_module", library_path);
+    }
+
+    let module = unsafe { &*(module_ptr as *const ZygiskNextCompanionModule) };
+    if module.target_api_version > 4 || module.on_module_connected.is_none() {
+        control.write_u8(0)?;
+        anyhow::bail!("Native ZN companion API is unsupported or incomplete");
+    }
+
+    if let Some(callback) = module.on_companion_loaded {
+        unsafe { callback() };
+    }
+    control.write_u8(1)?;
+    info!("ZN companion loaded: {}", library_path);
+
+    loop {
+        if !is_socket_alive(&control) {
+            info!("ZN companion control socket closed: {}", library_path);
+            break;
+        }
+
+        let client_fd = match control.recv_fd() {
+            Ok(fd) => fd,
+            Err(error) => {
+                if !is_socket_alive(&control) { break; }
+                return Err(error).context("failed to receive Native ZN client FD");
+            }
+        };
+
+        let mut client = unsafe { UnixStream::from_raw_fd(client_fd) };
+        client.write_u8(1)?;
+        let owned_by_module = client.into_raw_fd();
+        if let Some(callback) = module.on_module_connected {
+            unsafe { callback(owned_by_module) };
+        } else {
+            unsafe { libc::close(owned_by_module) };
+        }
+    }
+
+    // Keep the linker handle alive until process teardown; callbacks may still
+    // hold code pointers from this DSO.
+    let _keep_loaded = handle;
+    Ok(())
+}

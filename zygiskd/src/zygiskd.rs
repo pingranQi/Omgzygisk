@@ -14,12 +14,13 @@ use crate::r#fn;
 use crate::mount::{MountNamespace, MountNamespaceManager};
 use crate::utils::{self, UnixStreamExt};
 use crate::{constants, lp_select, root_impl};
+use crate::zn_manifest;
 use anyhow::{Context as AnyhowContext, Result, bail};
 use log::{debug, error, info, trace, warn};
 use passfd::FdPassingExt;
 use rustix::io::{FdFlags, fcntl_setfd};
 use std::fs;
-use std::io::{Error, ErrorKind};
+use std::io::{Error, ErrorKind, Read};
 use std::os::fd::AsRawFd;
 use std::os::fd::{AsFd, OwnedFd, RawFd};
 use std::os::unix::process::CommandExt;
@@ -58,6 +59,8 @@ struct AppContext {
     module_companions: Mutex<std::collections::HashMap<String, Mutex<Option<UnixStream>>>>,
     /// Companion sockets for FN nodes, keyed by node id.
     fn_companions: Mutex<std::collections::HashMap<String, Mutex<Option<UnixStream>>>>,
+    /// Native ZN companion sockets, keyed by their canonical library path.
+    zn_companions: Mutex<std::collections::HashMap<PathBuf, Mutex<Option<UnixStream>>>>,
 }
 
 // Global paths, initialized once at startup.
@@ -97,6 +100,7 @@ pub fn main(tmp_path: Option<&str>) -> Result<()> {
         mount_manager,
         module_companions: Mutex::new(std::collections::HashMap::new()),
         fn_companions: Mutex::new(std::collections::HashMap::new()),
+        zn_companions: Mutex::new(std::collections::HashMap::new()),
     });
     let listener = create_daemon_socket()?;
 
@@ -142,6 +146,9 @@ fn handle_connection(mut stream: UnixStream, context: Arc<AppContext>) -> Result
                 companion.lock().unwrap().take();
             }
             for companion in context.fn_companions.lock().unwrap().values() {
+                companion.lock().unwrap().take();
+            }
+            for companion in context.zn_companions.lock().unwrap().values() {
                 companion.lock().unwrap().take();
             }
         }
@@ -194,6 +201,12 @@ fn handle_threaded_action(
         DaemonSocketAction::RemoveFnNode => handle_remove_fn_node(&mut stream),
         DaemonSocketAction::ReadFnModules => handle_read_fn_modules(&mut stream),
         DaemonSocketAction::GetFnModuleDir => handle_get_fn_module_dir(&mut stream),
+        DaemonSocketAction::CheckZnTarget => handle_check_zn_target(&mut stream),
+        DaemonSocketAction::GetZnPlan => handle_get_zn_plan(&mut stream),
+        DaemonSocketAction::RequestZnCompanionSocket => {
+            handle_request_zn_companion_socket(&mut stream, context)
+        }
+        DaemonSocketAction::ReportZnModule => handle_report_zn_module(&mut stream),
         // Other cases are handled synchronously and won't reach here.
         _ => unreachable!(),
     }
@@ -1486,6 +1499,338 @@ fn spawn_companion(name: &str, lib_fd: RawFd) -> Result<Option<UnixStream>> {
             _ => bail!("Invalid response from companion setup"),
         }
     }
+}
+
+// --- Native ZN manifest and delivery -----------------------------------------
+
+const MAX_ZN_MODULES_PER_PROCESS: usize = 128;
+
+fn peer_credentials(stream: &UnixStream) -> Option<libc::ucred> {
+    let mut credentials: libc::ucred = unsafe { std::mem::zeroed() };
+    let mut length = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+    let result = unsafe {
+        libc::getsockopt(
+            stream.as_raw_fd(),
+            libc::SOL_SOCKET,
+            libc::SO_PEERCRED,
+            &mut credentials as *mut _ as *mut libc::c_void,
+            &mut length,
+        )
+    };
+    (result == 0).then_some(credentials)
+}
+
+fn executable_path_for_peer(stream: &UnixStream) -> Result<String> {
+    let credentials = peer_credentials(stream)
+        .context("could not identify Native ZN socket peer")?;
+    let path = fs::read_link(format!("/proc/{}/exe", credentials.pid))
+        .with_context(|| format!("could not read executable for peer {}", credentials.pid))?;
+    let mut path = path.to_string_lossy().into_owned();
+    if let Some(stripped) = path.strip_suffix(" (deleted)") {
+        path = stripped.to_owned();
+    }
+    Ok(path)
+}
+
+fn process_name_from_path(path: &str) -> String {
+    Path::new(path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default()
+        .to_owned()
+}
+
+fn is_elf_matching_arch(path: &Path) -> bool {
+    let mut file = match fs::File::open(path) {
+        Ok(file) => file,
+        Err(_) => return false,
+    };
+    let mut header = [0u8; 5];
+    if file.read_exact(&mut header).is_err() || &header[..4] != b"\x7FELF" {
+        return false;
+    }
+    let expected_class = if cfg!(target_pointer_width = "64") { 2 } else { 1 };
+    header[4] == expected_class
+}
+
+/// Return canonical, in-module library paths matched by the process executable.
+/// Canonicalization prevents a manifest symlink or ../ path from escaping its
+/// owning root module directory.
+fn scan_zn_manifest_for_target(
+    process_name: &str,
+    process_path: &str,
+) -> Result<Vec<(PathBuf, bool)>> {
+    let modules_root = match fs::canonicalize(constants::PATH_MODULES_DIR) {
+        Ok(path) => path,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error).context("failed to canonicalize Native ZN module root"),
+    };
+    let entries = match fs::read_dir(&modules_root) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error).context("failed to read Native ZN module root"),
+    };
+
+    let mut results = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    for entry in entries.flatten() {
+        if results.len() >= MAX_ZN_MODULES_PER_PROCESS {
+            warn!("Native ZN plan truncated at {} entries", MAX_ZN_MODULES_PER_PROCESS);
+            break;
+        }
+        let module_dir = match fs::canonicalize(entry.path()) {
+            Ok(path) if path.starts_with(&modules_root) && path.is_dir() => path,
+            _ => continue,
+        };
+        if module_dir.join("disable").exists() || module_dir.join("remove").exists() {
+            continue;
+        }
+
+        let manifest_path = module_dir.join("zn_modules.txt");
+        let content = match fs::read_to_string(&manifest_path) {
+            Ok(content) => content,
+            Err(error) if error.kind() == ErrorKind::NotFound => continue,
+            Err(error) => {
+                warn!("Failed to read {}: {}", manifest_path.display(), error);
+                continue;
+            }
+        };
+
+        for line in content.lines() {
+            let Some(manifest) = zn_manifest::parse_line(line) else {
+                continue;
+            };
+            if !manifest.matches(process_name, process_path) {
+                continue;
+            }
+
+            let candidate = PathBuf::from(&manifest.library);
+            let candidate = if candidate.is_absolute() {
+                candidate
+            } else {
+                module_dir.join(candidate)
+            };
+            let canonical_library = match fs::canonicalize(candidate) {
+                Ok(path) => path,
+                Err(error) => {
+                    warn!("Native ZN library is unavailable: {}: {}", manifest.library, error);
+                    continue;
+                }
+            };
+            if canonical_library == module_dir
+                || !canonical_library.starts_with(&module_dir)
+                || !is_elf_matching_arch(&canonical_library)
+            {
+                warn!("Skipping invalid or out-of-module Native ZN library: {}", canonical_library.display());
+                continue;
+            }
+
+            if seen.insert(canonical_library.clone()) {
+                results.push((canonical_library, manifest.companion));
+                if results.len() >= MAX_ZN_MODULES_PER_PROCESS {
+                    break;
+                }
+            }
+        }
+    }
+
+    Ok(results)
+}
+
+fn handle_check_zn_target(stream: &mut UnixStream) -> Result<()> {
+    let process_name = stream.read_string()?;
+    let process_path = stream.read_string()?;
+
+    // Only the root init monitor may ask about a different process. The
+    // injector inside the matched process uses GetZnPlan, whose peer PID is
+    // resolved from SO_PEERCRED instead of trusting a caller-supplied path.
+    if peer_credentials(stream).map(|credentials| credentials.uid) != Some(0) {
+        warn!("CheckZnTarget: rejecting non-root peer");
+        stream.write_u8(0)?;
+        return Ok(());
+    }
+
+    let matched = scan_zn_manifest_for_target(&process_name, &process_path)
+        .map(|entries| !entries.is_empty())
+        .unwrap_or_else(|error| {
+            warn!("Native ZN target scan failed: {}", error);
+            false
+        });
+    stream.write_u8(u8::from(matched))?;
+    Ok(())
+}
+
+fn handle_get_zn_plan(stream: &mut UnixStream) -> Result<()> {
+    let requested_name = stream.read_string()?;
+    let requested_path = stream.read_string()?;
+    let actual_path = match executable_path_for_peer(stream) {
+        Ok(path) => path,
+        Err(error) => {
+            warn!("GetZnPlan: {}", error);
+            stream.write_usize(0)?;
+            return Ok(());
+        }
+    };
+    let actual_name = process_name_from_path(&actual_path);
+    if requested_path != actual_path || requested_name != actual_name {
+        warn!(
+            "GetZnPlan: request identity mismatch (peer={} {}, requested={} {})",
+            actual_name, actual_path, requested_name, requested_path
+        );
+        stream.write_usize(0)?;
+        return Ok(());
+    }
+
+    let matched = scan_zn_manifest_for_target(&actual_name, &actual_path)?;
+    let mut plan = Vec::new();
+    for (library, companion) in matched {
+        match create_library_fd(&library) {
+            Ok(fd) => plan.push((library, companion, fd)),
+            Err(error) => warn!("Failed to stage Native ZN library {}: {}", library.display(), error),
+        }
+    }
+
+    stream.write_usize(plan.len())?;
+    for (library, companion, fd) in plan {
+        stream.write_string(&library.to_string_lossy())?;
+        stream.write_u8(u8::from(companion))?;
+        stream.send_fd(fd.as_raw_fd())?;
+        info!(
+            "Sent Native ZN module {} (companion={}) to {}",
+            library.display(),
+            companion,
+            actual_name
+        );
+    }
+    Ok(())
+}
+
+fn spawn_zn_companion(library_path: &Path) -> Result<Option<UnixStream>> {
+    let (mut daemon_sock, companion_sock) = UnixStream::pair()?;
+    let executable = std::env::current_exe().context("failed to resolve zygiskd executable")?;
+    let companion_fd = companion_sock.as_raw_fd();
+    let mut command = Command::new(&executable);
+    command
+        .arg0("zygiskd-zn-companion")
+        .arg("zn-companion")
+        .arg(library_path)
+        .arg(companion_fd.to_string());
+
+    // The private control socket is the only FD that must survive exec.
+    unsafe {
+        command.pre_exec(move || {
+            if libc::fcntl(companion_fd, libc::F_SETFD, 0) == -1 {
+                return Err(Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+
+    let _child = command.spawn().context("failed to spawn Native ZN companion")?;
+    drop(companion_sock);
+    match daemon_sock.read_u8()? {
+        0 => Ok(None),
+        1 => Ok(Some(daemon_sock)),
+        _ => bail!("invalid Native ZN companion startup response"),
+    }
+}
+
+fn handle_request_zn_companion_socket(
+    stream: &mut UnixStream,
+    context: &AppContext,
+) -> Result<()> {
+    let requested_path = PathBuf::from(stream.read_string()?);
+    let actual_path = match executable_path_for_peer(stream) {
+        Ok(path) => path,
+        Err(error) => {
+            warn!("ZN companion request: {}", error);
+            stream.write_u8(0)?;
+            return Ok(());
+        }
+    };
+    let process_name = process_name_from_path(&actual_path);
+    let modules_root = fs::canonicalize(constants::PATH_MODULES_DIR)?;
+    let library_path = match fs::canonicalize(requested_path) {
+        Ok(path) if path.starts_with(&modules_root) => path,
+        _ => {
+            warn!("ZN companion request rejected for a path outside the module root");
+            stream.write_u8(0)?;
+            return Ok(());
+        }
+    };
+
+    let authorized = scan_zn_manifest_for_target(&process_name, &actual_path)?
+        .iter()
+        .any(|(path, companion)| *companion && *path == library_path);
+    if !authorized {
+        warn!(
+            "ZN companion request rejected: {} is not declared for {}",
+            library_path.display(),
+            process_name
+        );
+        stream.write_u8(0)?;
+        return Ok(());
+    }
+
+    let companions = &mut *context.zn_companions.lock().unwrap();
+    let cell = companions.entry(library_path.clone()).or_default();
+    let mut companion = cell.lock().unwrap();
+
+    if companion
+        .as_ref()
+        .is_some_and(|socket| !utils::is_socket_alive(socket))
+    {
+        companion.take();
+    }
+
+    if companion.is_none() {
+        match spawn_zn_companion(&library_path) {
+            Ok(Some(socket)) => *companion = Some(socket),
+            Ok(None) => warn!(
+                "Native ZN module {} has no valid zn_companion_module",
+                library_path.display()
+            ),
+            Err(error) => warn!(
+                "Failed to spawn Native ZN companion {}: {}",
+                library_path.display(),
+                error
+            ),
+        }
+    }
+
+    if let Some(socket) = companion.as_ref() {
+        if let Err(error) = socket.send_fd(stream.as_raw_fd()) {
+            warn!("Failed to pass Native ZN client FD: {}", error);
+            stream.write_u8(0)?;
+        }
+        // On success, the companion writes the acknowledgement directly to
+        // the original client socket after receiving its descriptor.
+    } else {
+        stream.write_u8(0)?;
+    }
+    Ok(())
+}
+
+fn handle_report_zn_module(stream: &mut UnixStream) -> Result<()> {
+    let path = PathBuf::from(stream.read_string()?);
+    let injected = stream.read_u8()? != 0;
+    let modules_root = fs::canonicalize(constants::PATH_MODULES_DIR)?;
+    match fs::canonicalize(&path) {
+        Ok(canonical) if canonical.starts_with(&modules_root) => {
+            info!(
+                "Native ZN module {} {}",
+                canonical.display(),
+                if injected { "loaded" } else { "failed to load" }
+            );
+            stream.write_u8(1)?;
+        }
+        _ => {
+            warn!("Ignoring Native ZN status for an external path: {}", path.display());
+            stream.write_u8(0)?;
+        }
+    }
+    Ok(())
 }
 
 // --- Action Handlers ---
