@@ -1,3 +1,7 @@
 [submodule "loader/src/external/csoloader"]
 	path = loader/src/external/csoloader
 	url = https://github.com/ThePedroo/CSOLoader
+
+[submodule "loader/src/external/dobby"]
+	path = loader/src/external/dobby
+	url = https://github.com/LSPosed/Dobby.git

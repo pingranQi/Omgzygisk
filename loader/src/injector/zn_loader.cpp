@@ -1,0 +1,100 @@
+#include "zn_loader.hpp"
+
+#include <dlfcn.h>
+#include <limits.h>
+#include <unistd.h>
+
+#include <mutex>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include "daemon.hpp"
+#include "dl.h"
+#include "logging.hpp"
+#include "zn_api.hpp"
+
+namespace zn {
+namespace {
+
+std::mutex g_loaded_mutex;
+std::vector<void *> g_loaded_handles;
+std::vector<ZnModuleHandle *> g_module_handles;
+
+std::string getProcessPath() {
+    char path[PATH_MAX]{};
+    const ssize_t count = readlink("/proc/self/exe", path, sizeof(path) - 1);
+    if (count <= 0) return {};
+    std::string result(path, static_cast<size_t>(count));
+    constexpr std::string_view deleted = " (deleted)";
+    if (result.size() >= deleted.size() &&
+        result.compare(result.size() - deleted.size(), deleted.size(), deleted) == 0) {
+        result.resize(result.size() - deleted.size());
+    }
+    return result;
+}
+
+std::string getProcessName(const std::string &path) {
+    const size_t slash = path.find_last_of('/');
+    return slash == std::string::npos ? path : path.substr(slash + 1);
+}
+
+bool loadEntry(zygiskd::ZnPlanEntry &entry) {
+    void *handle = DlopenMem(entry.memfd, RTLD_NOW);
+    if (!handle) {
+        LOGE("ZN: dlopen failed for %s", entry.lib_path.c_str());
+        zygiskd::ReportZnModule(entry.lib_path, false);
+        return false;
+    }
+
+    auto *module = reinterpret_cast<ZygiskNextModule *>(dlsym(handle, "zn_module"));
+    if (!module || !module->onModuleLoaded || module->target_api_version < 1 ||
+        module->target_api_version > ZYGISK_NEXT_API_VERSION) {
+        LOGW("ZN: %s has no compatible zn_module export", entry.lib_path.c_str());
+        zygiskd::ReportZnModule(entry.lib_path, false);
+        return false;
+    }
+
+    auto *self = new ZnModuleHandle();
+    self->lib_path = entry.lib_path;
+    self->companion = entry.companion;
+    self->target_api_version = module->target_api_version;
+
+    LOGI("ZN: loading %s (API %d, companion=%s)", entry.lib_path.c_str(),
+         module->target_api_version, entry.companion ? "yes" : "no");
+    module->onModuleLoaded(self, getApiForVersion(module->target_api_version));
+
+    {
+        // Native ZN modules and their opaque handles remain resident for this
+        // process lifetime. Unloading either while callbacks/hooks are live is
+        // unsafe and differs from the scoped Zygisk module lifecycle.
+        std::lock_guard<std::mutex> lock(g_loaded_mutex);
+        g_loaded_handles.push_back(handle);
+        g_module_handles.push_back(self);
+    }
+    zygiskd::ReportZnModule(entry.lib_path, true);
+    return true;
+}
+
+}  // namespace
+
+void loadAllModules(unsigned char connect_retry) {
+    const std::string process_path = getProcessPath();
+    if (process_path.empty()) {
+        LOGW("ZN: cannot determine current executable path");
+        return;
+    }
+
+    const std::string process_name = getProcessName(process_path);
+    LOGI("ZN: requesting Native ZN plan for %s (%s)", process_name.c_str(),
+         process_path.c_str());
+
+    auto plan = zygiskd::GetZnPlan(process_name, process_path, connect_retry);
+    LOGI("ZN: daemon returned %zu matching module(s)", plan.size());
+    for (auto &entry : plan) {
+        if (entry.memfd < 0) continue;
+        (void) loadEntry(entry);
+    }
+}
+
+}  // namespace zn
