@@ -103,8 +103,10 @@ int hyosSetcontextHook(uid_t uid, int is_system_server, const char *se_info,
     if (!g_orig_setcontext) return -1;
     const int result = g_orig_setcontext(uid, is_system_server, se_info, package_name);
     if (result == 0) {
-        // hyosDeliverAppSpecialized filters the spawner parent using raw getpid.
-    } else if (result != 0 && hyosInChild() &&
+        // The raw-PID check inside hyosDeliverAppSpecialized excludes the
+        // spawner parent while allowing the forked application child through.
+        hyosDeliverAppSpecialized(package_name, se_info);
+    } else if (hyosInChild() &&
                !g_hyos_fired.load(std::memory_order_relaxed)) {
         LOGW("HYOS: selinux_android_setcontext failed (%d)", result);
     }
