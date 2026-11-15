@@ -213,6 +213,38 @@ export function StatusView({ snapshot }: StatusViewProps) {
 				</Card>
 			</div>
 
+
+			<SectionHeader>
+				{tr("status_memory_api_section", "Memory and native API")}
+			</SectionHeader>
+			<div className="px-4">
+				<Card className="flex flex-col gap-4">
+					<StatusField
+						label={tr("status_memory_policy", "Memory placement")}
+						value={tr("status_memory_policy_value", "High-address VMA gap preferred")}
+						tone="normal"
+					/>
+					<p className="text-onx-caption text-onx-muted">
+						{tr(
+							"status_memory_policy_desc",
+							"A guarded high-address gap between existing VMAs is requested. The kernel validates the hint; safe fallback is used when unavailable.",
+						)}
+					</p>
+					<Divider />
+					<StatusField
+						label={tr("status_zn_api", "Native ZN API")}
+						value={tr("status_zn_api_unavailable", "Not implemented")}
+						tone="unavailable"
+					/>
+					<p className="text-onx-caption text-onx-muted">
+						{tr(
+							"status_zn_api_desc",
+							"Native ZN modules require an exec-time bootstrap and a separate native-process lifecycle. This build provides Zygisk API and FN, not Native ZN.",
+						)}
+					</p>
+				</Card>
+			</div>
+
 			<SectionHeader>
 				{tr("status_install_section", "Installation")}
 			</SectionHeader>

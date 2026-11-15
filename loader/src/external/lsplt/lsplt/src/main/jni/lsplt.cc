@@ -26,6 +26,63 @@ inline auto PageEnd(uintptr_t addr) {
     return reinterpret_cast<char *>(reinterpret_cast<uintptr_t>(PageStart(addr)) + page_size);
 }
 
+uintptr_t FindHighGapHint(const std::vector<lsplt::MapInfo> &maps, size_t length) {
+    constexpr uintptr_t kHighFloor = 0x100000000ULL;
+    constexpr uintptr_t kGuard = 16ULL * 1024ULL * 1024ULL;
+    const uintptr_t page_size = static_cast<uintptr_t>(getpagesize());
+    if (maps.size() < 2 || length == 0 || page_size == 0 ||
+        length > UINTPTR_MAX - 2 * kGuard)
+        return 0;
+
+    const uintptr_t low = maps.front().start;
+    const uintptr_t high = maps.back().end;
+    if (high <= low)
+        return 0;
+    const uintptr_t span = high - low;
+    const uintptr_t upper_cutoff = low + (span - span / 3);
+
+    for (int pass = 0; pass < 2; ++pass) {
+        uintptr_t best = 0;
+        uintptr_t best_clearance = 0;
+        for (size_t i = 1; i < maps.size(); ++i) {
+            const uintptr_t left = maps[i - 1].end;
+            const uintptr_t right = maps[i].start;
+            if (right <= left || left < kHighFloor ||
+                right - left < length + 2 * kGuard)
+                continue;
+
+            const uintptr_t usable_begin = left + kGuard;
+            const uintptr_t usable_end = right - kGuard;
+            if (usable_end < usable_begin || usable_end - usable_begin < length)
+                continue;
+
+            uintptr_t candidate =
+                usable_begin + (usable_end - usable_begin - length) / 2;
+            const uintptr_t remainder = candidate % page_size;
+            if (remainder != 0)
+                candidate += page_size - remainder;
+            if (candidate > usable_end || length > usable_end - candidate)
+                continue;
+            if (pass == 0 && candidate < upper_cutoff)
+                continue;
+
+            const uintptr_t left_clearance = candidate - left;
+            const uintptr_t right_clearance = right - (candidate + length);
+            const uintptr_t clearance =
+                left_clearance < right_clearance ? left_clearance : right_clearance;
+            if (clearance > best_clearance ||
+                (clearance == best_clearance && candidate > best)) {
+                best = candidate;
+                best_clearance = clearance;
+            }
+        }
+        if (best != 0)
+            return best;
+    }
+    return 0;
+}
+
+
 /*
  * =======================================================================================
  *                            High-Level Data Flow Diagram
@@ -309,9 +366,40 @@ public:
         if (info.end <= addr) return false;
         const auto len = info.end - info.start;
         if (!info.backup && !info.self) {
-            // let os find a suitable address
-            auto *backup_addr = sys_mmap(nullptr, len, PROT_NONE, MAP_PRIVATE | MAP_ANON, -1, 0);
-            LOGD("backup %p to %p", reinterpret_cast<void *>(addr), backup_addr);
+            // Prefer a guarded high VMA gap. This is a normal hint, not a fixed
+            // mapping: the kernel must confirm it before LSPlt adopts the region.
+            auto maps = lsplt::MapInfo::Scan();
+            const uintptr_t preferred_hint = FindHighGapHint(maps, len);
+            auto *backup_addr = static_cast<char *>(MAP_FAILED);
+            if (preferred_hint != 0) {
+                backup_addr = static_cast<char *>(sys_mmap(
+                    reinterpret_cast<void *>(preferred_hint), len, PROT_NONE,
+                    MAP_PRIVATE | MAP_ANON, -1, 0));
+                if (backup_addr != MAP_FAILED &&
+                    reinterpret_cast<uintptr_t>(backup_addr) != preferred_hint) {
+                    if (munmap(backup_addr, len) != 0)
+                        LOGE("failed to release rejected backup hint mapping %p", backup_addr);
+                    backup_addr = static_cast<char *>(MAP_FAILED);
+                }
+            }
+            if (backup_addr == MAP_FAILED) {
+                constexpr uintptr_t kHighAddressFloor = 0x100000000ULL;
+                backup_addr = static_cast<char *>(sys_mmap(
+                    reinterpret_cast<void *>(kHighAddressFloor), len, PROT_NONE,
+                    MAP_PRIVATE | MAP_ANON, -1, 0));
+                if (backup_addr != MAP_FAILED &&
+                    reinterpret_cast<uintptr_t>(backup_addr) < kHighAddressFloor) {
+                    if (munmap(backup_addr, len) != 0)
+                        LOGE("failed to release low backup mapping %p", backup_addr);
+                    backup_addr = static_cast<char *>(MAP_FAILED);
+                }
+            }
+            if (backup_addr == MAP_FAILED)
+                backup_addr = static_cast<char *>(
+                    sys_mmap(nullptr, len, PROT_NONE, MAP_PRIVATE | MAP_ANON, -1, 0));
+            LOGD("backup %p to %p (high-gap hint=%p)",
+                 reinterpret_cast<void *>(addr), backup_addr,
+                 reinterpret_cast<void *>(preferred_hint));
             if (backup_addr == MAP_FAILED) return false;
             if (auto *new_addr =
                     sys_mremap(reinterpret_cast<void *>(info.start), len, len,

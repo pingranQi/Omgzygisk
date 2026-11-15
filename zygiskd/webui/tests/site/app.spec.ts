@@ -44,6 +44,26 @@ test.describe("status", () => {
 		await expect(main(page).getByText("Zygote 32-bit", { exact: true })).toHaveCount(0);
 	});
 
+
+	test("shows the memory placement policy and reports Native ZN as unavailable", async ({ page }) => {
+		await page.goto("/");
+		await expect(
+			main(page).getByText("High-address VMA gap preferred", { exact: true }),
+		).toBeVisible();
+		await expect(
+			main(page).getByText("Native ZN API", { exact: true }),
+		).toBeVisible();
+		await expect(
+			main(page).getByText("Not implemented", { exact: true }),
+		).toBeVisible();
+		await expect(
+			main(page).getByText(
+				"Native ZN modules require an exec-time bootstrap and a separate native-process lifecycle. This build provides Zygisk API and FN, not Native ZN.",
+				{ exact: true },
+			),
+		).toBeVisible();
+	});
+
 	test("reports a zygote that has not been injected yet as pending, not failed", async ({
 		page,
 	}) => {

@@ -90,4 +90,11 @@
 	<string name="settings_about_section">关于</string>
 	<string name="settings_authors">作者</string>
 	<string name="settings_about_text">基于 ptrace 的 ARM64（arm64-v8a）Zygisk 实现，支持 FN（Functional Node）模块。fork 自 NeoZygisk。</string>
+	<string name="status_memory_api_section">内存与原生 API</string>
+	<string name="status_memory_policy">内存映射策略</string>
+	<string name="status_memory_policy_value">优先选择高地址 VMA 空洞</string>
+	<string name="status_memory_policy_desc">请求使用远离现有 VMA 且空间足够的高地址空洞；由内核确认映射地址，无法满足时安全回退。</string>
+	<string name="status_zn_api">Native ZN API</string>
+	<string name="status_zn_api_unavailable">尚未实现</string>
+	<string name="status_zn_api_desc">Native ZN 模块需要 exec 时注入引导程序，并具备独立的原生进程生命周期管理。本版本提供 Zygisk API 和 FN，尚不支持 Native ZN。</string>
 </resources>
