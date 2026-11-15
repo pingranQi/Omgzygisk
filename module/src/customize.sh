@@ -89,12 +89,14 @@ else
   ui_print "- Device sdk: $API"
 fi
 
-# check architecture
-if [ "$ARCH" != "arm" ] && [ "$ARCH" != "arm64" ] && [ "$ARCH" != "x86" ] && [ "$ARCH" != "x64" ]; then
-  abort "! Unsupported platform: $ARCH"
-else
-  ui_print "- Device platform: $ARCH"
+# check architecture: this package contains ARM64 binaries only.
+if [ "$ARCH" != "arm64" ]; then
+  ui_print "*********************************************************"
+  ui_print "! ARM64 only (arm64-v8a) is supported"
+  ui_print "! Detected device architecture: $ARCH"
+  abort    "*********************************************************"
 fi
+ui_print "- Device platform: ARM64 (arm64-v8a)"
 
 ui_print "- Extracting verify.sh"
 unzip -o "$ZIPFILE" 'verify.sh' -d "$TMPDIR" >&2
@@ -138,43 +140,21 @@ if [ ! -f "$MODPATH/webroot/index.html" ]; then
   ui_print "! Warning: webroot/index.html not found after extraction"
 fi
 
-mkdir "$MODPATH/bin"
-mkdir "$MODPATH/lib"
-mkdir "$MODPATH/lib64"
+# Remove binaries left by an older multi-ABI installation before extracting
+# the ARM64-only payload.
+mkdir -p "$MODPATH/bin" "$MODPATH/lib64"
+rm -rf "$MODPATH/lib"
+rm -f "$MODPATH/bin/zygiskd32" "$MODPATH/bin/zygisk-ptrace32"
 
-if [ "$ARCH" = "x86" ]; then
-  ui_print "- Extracting x86 libraries"
-  extract "$ZIPFILE" 'bin/x86/zygiskd' "$MODPATH/bin" true
-  mv "$MODPATH/bin/zygiskd" "$MODPATH/bin/zygiskd32"
-  extract "$ZIPFILE" 'lib/x86/libzygisk.so' "$MODPATH/lib" true
-  extract "$ZIPFILE" 'lib/x86/libzygisk_ptrace.so' "$MODPATH/bin" true
-  mv "$MODPATH/bin/libzygisk_ptrace.so" "$MODPATH/bin/zygisk-ptrace32"
-elif [ "$ARCH" = "x64" ]; then
-  ui_print "- Extracting x64 libraries"
-  extract "$ZIPFILE" 'bin/x86_64/zygiskd' "$MODPATH/bin" true
-  mv "$MODPATH/bin/zygiskd" "$MODPATH/bin/zygiskd64"
-  extract "$ZIPFILE" 'lib/x86_64/libzygisk.so' "$MODPATH/lib64" true
-  extract "$ZIPFILE" 'lib/x86_64/libzygisk_ptrace.so' "$MODPATH/bin" true
-  mv "$MODPATH/bin/libzygisk_ptrace.so" "$MODPATH/bin/zygisk-ptrace64"
-elif [ "$ARCH" = "arm" ]; then
-  ui_print "- Extracting arm libraries"
-  extract "$ZIPFILE" 'bin/armeabi-v7a/zygiskd' "$MODPATH/bin" true
-  mv "$MODPATH/bin/zygiskd" "$MODPATH/bin/zygiskd32"
-  extract "$ZIPFILE" 'lib/armeabi-v7a/libzygisk.so' "$MODPATH/lib" true
-  extract "$ZIPFILE" 'lib/armeabi-v7a/libzygisk_ptrace.so' "$MODPATH/bin" true
-  mv "$MODPATH/bin/libzygisk_ptrace.so" "$MODPATH/bin/zygisk-ptrace32"
-elif [ "$ARCH" = "arm64" ]; then
-  ui_print "- Extracting arm64 libraries"
-  extract "$ZIPFILE" 'bin/arm64-v8a/zygiskd' "$MODPATH/bin" true
-  mv "$MODPATH/bin/zygiskd" "$MODPATH/bin/zygiskd64"
-  extract "$ZIPFILE" 'lib/arm64-v8a/libzygisk.so' "$MODPATH/lib64" true
-  extract "$ZIPFILE" 'lib/arm64-v8a/libzygisk_ptrace.so' "$MODPATH/bin" true
-  mv "$MODPATH/bin/libzygisk_ptrace.so" "$MODPATH/bin/zygisk-ptrace64"
-fi
+ui_print "- Extracting ARM64 (arm64-v8a) libraries"
+extract "$ZIPFILE" 'bin/arm64-v8a/zygiskd' "$MODPATH/bin" true
+mv "$MODPATH/bin/zygiskd" "$MODPATH/bin/zygiskd64"
+extract "$ZIPFILE" 'lib/arm64-v8a/libzygisk.so' "$MODPATH/lib64" true
+extract "$ZIPFILE" 'lib/arm64-v8a/libzygisk_ptrace.so' "$MODPATH/bin" true
+mv "$MODPATH/bin/libzygisk_ptrace.so" "$MODPATH/bin/zygisk-ptrace64"
 
 ui_print "- Setting permissions"
 set_perm_recursive "$MODPATH/bin" 0 0 0755 0755
-set_perm_recursive "$MODPATH/lib" 0 0 0755 0644 u:object_r:system_lib_file:s0
 set_perm_recursive "$MODPATH/lib64" 0 0 0755 0644 u:object_r:system_lib_file:s0
 set_perm_recursive "$MODPATH/webroot" 0 0 0755 0644
 

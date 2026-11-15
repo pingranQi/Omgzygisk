@@ -26,9 +26,10 @@
 	<string name="status_daemon">デーモン</string>
 	<string name="status_root">Root 実装</string>
 	<string name="status_version">バージョン</string>
-	<string name="status_zygote_section">Zygote</string>
-	<string name="status_zygote64">Zygote 64 ビット</string>
-	<string name="status_zygote32">Zygote 32 ビット</string>
+	<string name="status_zygote_section">Zygote（ARM64）</string>
+	<string name="status_supported_abi">対応 ABI</string>
+	<string name="status_zygote_arm64">ARM64 Zygote</string>
+	<string name="status_arch_notice">64 ビット ARM プロセスのみ対応。ARMv7、x86、x86_64 はサポートされません。</string>
 	<string name="status_install_section">インストール</string>
 	<string name="status_installed">モジュールファイル</string>
 	<string name="status_installed_yes">インストール済み</string>
@@ -88,5 +89,5 @@
 	<string name="settings_mount_mode_global">グローバル</string>
 	<string name="settings_about_section">このモジュールについて</string>
 	<string name="settings_authors">作者</string>
-	<string name="settings_about_text">ptrace ベースの Zygisk 実装で、FN（Functional Node）モジュールに対応しています。NeoZygisk のフォークです。</string>
+	<string name="settings_about_text">FN（Functional Node）モジュールに対応する ARM64 専用の ptrace ベース Zygisk 実装です。NeoZygisk のフォークです。</string>
 </resources>

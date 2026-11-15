@@ -18,7 +18,6 @@ const STATUS_OUTPUT = [
 	"version=1.0",
 	"root=KernelSU",
 	"z64=1",
-	"z32=0",
 	"daemon=1",
 	"hotplug=0",
 	"mount_mode=setns",

@@ -6,7 +6,6 @@ export interface StatusKeys {
 	version?: string;
 	root?: string;
 	z64?: string;
-	z32?: string;
 	daemon?: string;
 	hotplug?: string;
 	mount_mode?: string;

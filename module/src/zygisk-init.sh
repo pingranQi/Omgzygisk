@@ -52,24 +52,23 @@ if [ "$fail_count" -ge 3 ] && [ ! -f "$FAILSAFE_FLAG" ]; then
   log -p e -t "zygisk-sh" "Boot-loop fail-safe: $fail_count consecutive unhealthy boots; injection latched OFF until $FAILSAFE_FLAG is removed"
 fi
 
-# ── Runtime libraries ─────────────────────────────────────────────────────────
+# ── Runtime libraries (ARM64 only) ────────────────────────────────────────────
+# Clean stale 32-bit files and libraries left by upgrades from older multi-ABI
+# packages. They must not be mistaken for supported runtime components.
+rm -rf "$MODDIR/lib" "$TMP_PATH/lib"
+rm -f "$MODDIR/bin/zygiskd32" "$MODDIR/bin/zygisk-ptrace32"
+
 if [ -f "$MODDIR/lib64/libzygisk.so" ]; then
   create_sys_perm "$TMP_PATH/lib64"
   cp "$MODDIR/lib64/libzygisk.so" "$TMP_PATH/lib64/libzygisk.so"
   chcon u:object_r:system_file:s0 "$TMP_PATH/lib64/libzygisk.so"
 fi
 
-if [ -f "$MODDIR/lib/libzygisk.so" ]; then
-  create_sys_perm "$TMP_PATH/lib"
-  cp "$MODDIR/lib/libzygisk.so" "$TMP_PATH/lib/libzygisk.so"
-  chcon u:object_r:system_file:s0 "$TMP_PATH/lib/libzygisk.so"
-fi
-
 [ "$DEBUG" = true ] && export RUST_BACKTRACE=1
 
-# ── Zygote monitor ────────────────────────────────────────────────────────────
+# ── ARM64 Zygote monitor ──────────────────────────────────────────────────────
 if [ -f "$MODDIR/bin/zygisk-ptrace64" ]; then
   "$MODDIR/bin/zygisk-ptrace64" monitor &
-elif [ -f "$MODDIR/bin/zygisk-ptrace32" ]; then
-  "$MODDIR/bin/zygisk-ptrace32" monitor &
+else
+  log -p e -t "zygisk-sh" "ARM64 ptrace monitor is missing; refusing to start an unsupported 32-bit fallback"
 fi

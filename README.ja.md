@@ -8,6 +8,8 @@
 
 ptrace ベースの Zygisk 実装。WebUI 内蔵、ホットスワップ対応の FN モジュール、高度な DenyList を搭載。カーネルモジュール不要。
 
+**対応アーキテクチャ：ARM64（`arm64-v8a`）のみ。** ARMv7（`armeabi-v7a`）、x86、x86_64 のバイナリはビルド・同梱されません。インストーラーは ARM64 以外の端末でのインストールを拒否し、32 ビットプロセスへの注入には対応しません。
+
 [![Telegram](https://img.shields.io/badge/Telegram-OnyxZygisk-2CA5E0?logo=telegram&logoColor=white)](https://t.me/OnyxZygisk)
 [![Release](https://img.shields.io/github/v/release/OnyxZygisk/OnyxZygisk?label=最新版&color=brightgreen)](https://github.com/OnyxZygisk/OnyxZygisk/releases/latest)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)

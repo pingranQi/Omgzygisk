@@ -8,6 +8,8 @@
 
 A ptrace-powered Zygisk implementation with a built-in WebUI, hot-swappable FN modules, and an advanced DenyList. No kernel module required.
 
+**Supported architecture: ARM64 (`arm64-v8a`) only.** ARMv7 (`armeabi-v7a`), x86 and x86_64 binaries are not built or packaged. The installer rejects non-ARM64 devices, and 32-bit process injection is not supported.
+
 [![Telegram](https://img.shields.io/badge/Telegram-OnyxZygisk-2CA5E0?logo=telegram&logoColor=white)](https://t.me/OnyxZygisk)
 [![Release](https://img.shields.io/github/v/release/OnyxZygisk/OnyxZygisk?label=Latest&color=brightgreen)](https://github.com/OnyxZygisk/OnyxZygisk/releases/latest)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)

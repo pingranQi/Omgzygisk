@@ -26,9 +26,10 @@
 	<string name="status_daemon">Daemon</string>
 	<string name="status_root">Root implementation</string>
 	<string name="status_version">Version</string>
-	<string name="status_zygote_section">Zygote</string>
-	<string name="status_zygote64">Zygote 64-bit</string>
-	<string name="status_zygote32">Zygote 32-bit</string>
+	<string name="status_zygote_section">Zygote (ARM64)</string>
+	<string name="status_supported_abi">Supported ABI</string>
+	<string name="status_zygote_arm64">ARM64 Zygote</string>
+	<string name="status_arch_notice">Injection is limited to 64-bit ARM processes; 32-bit ARM, x86 and x86_64 are not supported.</string>
 	<string name="status_install_section">Installation</string>
 	<string name="status_installed">Module files</string>
 	<string name="status_installed_yes">Installed</string>
@@ -88,5 +89,5 @@
 	<string name="settings_mount_mode_global">Global</string>
 	<string name="settings_about_section">About</string>
 	<string name="settings_authors">Authors</string>
-	<string name="settings_about_text">A Zygisk implementation via ptrace, with FN (Functional Node) modules. A fork of NeoZygisk.</string>
+	<string name="settings_about_text">An ARM64-only ptrace Zygisk implementation with FN (Functional Node) modules. A fork of NeoZygisk.</string>
 </resources>
