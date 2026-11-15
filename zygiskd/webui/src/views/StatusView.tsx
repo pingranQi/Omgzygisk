@@ -213,7 +213,6 @@ export function StatusView({ snapshot }: StatusViewProps) {
 				</Card>
 			</div>
 
-
 			<SectionHeader>
 				{tr("status_memory_api_section", "Memory and native API")}
 			</SectionHeader>
@@ -221,7 +220,10 @@ export function StatusView({ snapshot }: StatusViewProps) {
 				<Card className="flex flex-col gap-4">
 					<StatusField
 						label={tr("status_memory_policy", "Memory placement")}
-						value={tr("status_memory_policy_value", "High-address VMA gap preferred")}
+						value={tr(
+							"status_memory_policy_value",
+							"High-address VMA gap preferred",
+						)}
 						tone="normal"
 					/>
 					<p className="text-onx-caption text-onx-muted">
