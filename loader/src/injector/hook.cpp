@@ -65,7 +65,7 @@ using namespace std;
 //
 // Some notes regarding the important functions/symbols during bootstrap:
 //
-// * HookContext::hook_plt(): hook functions like |unshare| and |strdup|
+// * HookContext::hook_plt(): hook functions like |strdup|
 // * strdup: called in AndroidRuntime::start before calling ZygoteInit#main(...)
 // * HookContext::hook_zygote_jni(): replace the process specialization functions registered
 //   with register_jni_procs. This marks the final step of the code injection bootstrap process.
@@ -130,32 +130,6 @@ DCL_HOOK_FUNC(ssize_t, read, int fd, void *buf, size_t count) {
 //   • revert only    — modules were unmounted from zygote already, so trusted
 //                      apps setns back into Root to regain them; denylisted
 //                      apps simply inherit the clean zygote (no setns).
-DCL_HOOK_FUNC(static int, unshare, int flags) {
-    if (g_ctx && (flags & CLONE_NEWNS) && !(g_ctx->flags & SERVER_FORK_AND_SPECIALIZE) &&
-        !(g_ctx->info_flags & MOUNT_MODE_GLOBAL)) {
-        bool should_unmount = !(g_ctx->info_flags & (PROCESS_IS_MANAGER | PROCESS_GRANTED_ROOT)) &&
-                              g_ctx->flags & DO_REVERT_UNMOUNT;
-
-        if (g_ctx->info_flags & MOUNT_MODE_SETNS) {
-            // Zygote was never unmounted in this mode: only denylisted apps
-            // need switching, into the cached clean namespace.
-            if (should_unmount) {
-                ZygiskContext::update_mount_namespace(zygiskd::MountNamespace::Clean);
-            }
-        } else {
-            // Revert-only: zygote had its module mounts stripped.
-            if (!should_unmount && g_hook->zygote_unmounted) {
-                ZygiskContext::update_mount_namespace(zygiskd::MountNamespace::Root);
-            }
-            // Denylisted apps rely on inheriting the clean zygote; no setns
-            // fallback (that is what makes this "revert only").
-        }
-    }
-
-    int res = old_unshare(flags);
-    errno = 0;  // Restore errno back to 0
-    return res;
-}
 
 DCL_HOOK_FUNC(int, property_get, const char *key, char *value, const char *default_value) {
     if (!g_hook->skip_hooking_unloader) {
@@ -372,7 +346,6 @@ void HookContext::hook_plt() {
     }
 
     PLT_HOOK_REGISTER(android_runtime_dev, android_runtime_inode, fork);
-    PLT_HOOK_REGISTER(android_runtime_dev, android_runtime_inode, unshare);
     PLT_HOOK_REGISTER(android_runtime_dev, android_runtime_inode, strdup);
     PLT_HOOK_REGISTER(android_runtime_dev, android_runtime_inode, property_get);
     if (android_runtime_dev != 0 && android_runtime_inode != 0) {
