@@ -3,8 +3,8 @@
 /*
  * Module loading seam.
  *
- * All Zygisk / FN module libraries are brought into the target process through
- * this one entry point. Today it wraps the system dynamic linker
+ * Zygisk, FN and Native ZN libraries are brought into the target process
+ * through this one entry point. Today it wraps the system dynamic linker
  * (android_dlopen_ext, via DlopenMem). It exists so that an in-process custom
  * ELF loader — one that maps the module without registering it in the linker's
  * solist — can be dropped in behind a single interface, with the system linker
@@ -25,8 +25,8 @@ struct LoadedModule {
     /// Resolved address of the caller-selected exported symbol, or null if
     /// the library failed to load or does not export that symbol.
     void *entry = nullptr;
-    /// True once the in-process custom linker (not the system linker) produced
-    /// this handle. Always false in the current stage.
+    /// True when the in-process CSOLoader (not the system linker) produced
+    /// this handle.
     bool custom = false;
 
     /// A module is usable only if its entry point resolved.
@@ -72,3 +72,13 @@ bool UnloadModule(void *handle, bool custom);
  * corrupts that module's state instead of merely leaking memory.
  */
 void DeinitCustomLoaderIfUsed();
+
+/**
+ * @brief Pin CSOLoader's process-wide state until process exit.
+ *
+ * Native ZN modules intentionally remain resident for the process lifetime.
+ * If any such module was loaded by CSOLoader, a later Zygisk module cleanup
+ * must not tear down the shared TLS/runtime state while the ZN module remains
+ * mapped and may still use it.
+ */
+void RetainCustomLoaderForProcessLifetime();

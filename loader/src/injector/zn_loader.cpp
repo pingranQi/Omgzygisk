@@ -71,8 +71,10 @@ bool loadEntry(zygiskd::ZnPlanEntry &entry) {
 
     {
         // Native ZN modules and their opaque handles remain resident for this
-        // process lifetime. Unloading either while callbacks/hooks are live is
-        // unsafe and differs from the scoped Zygisk module lifecycle.
+        // process lifetime. If CSOLoader produced this image, pin its shared
+        // process-global TLS state so the classic Zygisk full-unload path
+        // cannot tear it down while this module still has live code/hooks.
+        if (loaded.custom) RetainCustomLoaderForProcessLifetime();
         std::lock_guard<std::mutex> lock(g_loaded_mutex);
         g_loaded_modules.push_back(loaded);
         g_module_handles.push_back(self);

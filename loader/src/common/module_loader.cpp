@@ -98,6 +98,7 @@ static LoadedModule LoadViaCustomLinker(int memfd, const char *entry_symbol) {
 // csoloader_deinit() with no prior csoloader_load() would delete a pthread
 // TLS key that was never created).
 static bool g_used_custom_loader = false;
+static bool g_custom_loader_pinned = false;
 
 LoadedModule LoadModuleFromMemfd(int memfd, const char *entry_symbol) {
     if (!entry_symbol || !entry_symbol[0]) entry_symbol = DEFAULT_ENTRY_SYMBOL;
@@ -127,9 +128,14 @@ bool UnloadModule(void *handle, bool custom) {
 }
 
 void DeinitCustomLoaderIfUsed() {
-    if (!g_used_custom_loader) return;
+    if (!g_used_custom_loader || g_custom_loader_pinned) return;
     csoloader_deinit();
     // Defensive: a second call in the same process becomes a no-op rather
     // than tearing down already-torn-down global state.
     g_used_custom_loader = false;
+}
+
+
+void RetainCustomLoaderForProcessLifetime() {
+    g_custom_loader_pinned = true;
 }
