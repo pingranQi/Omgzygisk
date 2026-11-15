@@ -56,6 +56,9 @@ listOf("Debug", "Release").forEach { variantCap ->
 
             val cargoOutput = providers.exec {
                 workingDir = projectDir
+                // Defer non-zero exit handling until stdout/stderr have been
+                // emitted below; providers.exec otherwise throws on result.get().
+                isIgnoreExitValue = true
                 environment("ANDROID_NDK_HOME", ndkFile.absolutePath)
                 environment("MIN_APATCH_VERSION", minAPatchVersion.toString())
                 environment("MIN_KSU_VERSION", minKsuVersion.toString())
