@@ -10,15 +10,15 @@
 #include <vector>
 
 #include "daemon.hpp"
-#include "dl.h"
 #include "logging.hpp"
+#include "module_loader.hpp"
 #include "zn_api.hpp"
 
 namespace zn {
 namespace {
 
 std::mutex g_loaded_mutex;
-std::vector<void *> g_loaded_handles;
+std::vector<LoadedModule> g_loaded_modules;
 std::vector<ZnModuleHandle *> g_module_handles;
 
 std::string getProcessPath() {
@@ -40,17 +40,22 @@ std::string getProcessName(const std::string &path) {
 }
 
 bool loadEntry(zygiskd::ZnPlanEntry &entry) {
-    void *handle = DlopenMem(entry.memfd, RTLD_NOW);
-    if (!handle) {
-        LOGE("ZN: dlopen failed for %s", entry.lib_path.c_str());
+    // Share the existing CSOLoader-first module-loading seam with classic
+    // Zygisk/FN modules. ZN's public entry is a data object, so only the
+    // resolved address differs; the mapped image and lifetime policy are the
+    // same. The always-available system-linker fallback remains in the seam.
+    LoadedModule loaded = LoadModuleFromMemfd(entry.memfd, "zn_module");
+    if (!loaded) {
+        LOGE("ZN: unable to load/resolve zn_module for %s", entry.lib_path.c_str());
         zygiskd::ReportZnModule(entry.lib_path, false);
         return false;
     }
 
-    auto *module = reinterpret_cast<ZygiskNextModule *>(dlsym(handle, "zn_module"));
+    auto *module = reinterpret_cast<ZygiskNextModule *>(loaded.entry);
     if (!module || !module->onModuleLoaded || module->target_api_version < 1 ||
         module->target_api_version > ZYGISK_NEXT_API_VERSION) {
         LOGW("ZN: %s has no compatible zn_module export", entry.lib_path.c_str());
+        (void) UnloadModule(loaded.handle, loaded.custom);
         zygiskd::ReportZnModule(entry.lib_path, false);
         return false;
     }
@@ -69,7 +74,7 @@ bool loadEntry(zygiskd::ZnPlanEntry &entry) {
         // process lifetime. Unloading either while callbacks/hooks are live is
         // unsafe and differs from the scoped Zygisk module lifecycle.
         std::lock_guard<std::mutex> lock(g_loaded_mutex);
-        g_loaded_handles.push_back(handle);
+        g_loaded_modules.push_back(loaded);
         g_module_handles.push_back(self);
     }
     zygiskd::ReportZnModule(entry.lib_path, true);
