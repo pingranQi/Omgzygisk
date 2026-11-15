@@ -49,6 +49,11 @@ void zn_entry(void*, size_t, const char* path, bool) {
         zn::initHyosRuntime();
     }
     zn::loadAllModules();
+
+    // Keep Native ZN exec-time injection on the same tracer-cleanup path as
+    // the classic Zygisk bootstrap.
+    perform_ptrace_message_clear();
+    send_seccomp_event_if_needed();
 }
 
 /**

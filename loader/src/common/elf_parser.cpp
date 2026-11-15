@@ -16,9 +16,12 @@ static T* pointer_at(void* map_base, ElfW(Off) offset) {
 }
 
 ElfImage::ElfImage(std::string_view library_name, void *base_address) {
+    // An explicit load base is useful for images whose path is known but which
+    // are not discoverable through dl_iterate_phdr (for example, custom-loaded
+    // images). In that case parse the supplied file path directly.
     if (!findLoadedLibraryInfo(library_name)) {
-        // If the library is not loaded in the process, we cannot proceed.
-        return;
+        if (!base_address) return;
+        library_path_.assign(library_name.data(), library_name.size());
     }
 
     if (base_address) base_address_ = base_address;

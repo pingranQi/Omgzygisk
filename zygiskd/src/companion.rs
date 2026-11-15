@@ -194,7 +194,8 @@ fn run_zn_companion(library_path: &str, fd: i32) -> Result<()> {
     }
 
     let module = unsafe { &*(module_ptr as *const ZygiskNextCompanionModule) };
-    if module.target_api_version > 4 || module.on_module_connected.is_none() {
+    if !(1..=4).contains(&module.target_api_version)
+        || module.on_module_connected.is_none() {
         control.write_u8(0)?;
         anyhow::bail!("Native ZN companion API is unsupported or incomplete");
     }
