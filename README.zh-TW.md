@@ -146,5 +146,3 @@ OmgZygisk 使用或基於以下開源專案建置：
 ## 授權條款
 
 OmgZygisk 依 [GNU Affero General Public License v3.0](LICENSE) 發佈。此儲存庫包含採用各自授權條款的上游程式碼與第三方元件；相關著作權與授權聲明均予以保留，詳見 [NOTICE.md](NOTICE.md) 及各元件目錄。
-
-為相容既有安裝，部分內部模組識別碼與裝置資料目錄仍可能使用 `onyxzygisk` 識別字。
