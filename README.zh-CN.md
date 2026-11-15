@@ -8,6 +8,8 @@
 
 基于 ptrace 的 Zygisk 实现，内置 WebUI、可热插拔的 FN 模块和进阶 DenyList。无需内核模块。
 
+**架构支持：仅 ARM64（`arm64-v8a`）。** 不再构建或打包 ARMv7（`armeabi-v7a`）、x86 和 x86_64 二进制文件。安装器会拒绝非 ARM64 设备，且不支持 32 位进程注入。
+
 [![Telegram](https://img.shields.io/badge/Telegram-OnyxZygisk-2CA5E0?logo=telegram&logoColor=white)](https://t.me/OnyxZygisk)
 [![Release](https://img.shields.io/github/v/release/OnyxZygisk/OnyxZygisk?label=最新版&color=brightgreen)](https://github.com/OnyxZygisk/OnyxZygisk/releases/latest)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)

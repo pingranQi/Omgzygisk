@@ -54,6 +54,11 @@ android {
     }
 
     defaultConfig {
+        // Ship native loader binaries for the single supported Android ABI.
+        ndk {
+            abiFilters += setOf("arm64-v8a")
+        }
+
         externalNativeBuild.cmake {
             cFlags("-std=c18", *defaultCFlags)
             cppFlags("-std=c++20", *defaultCFlags)

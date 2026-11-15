@@ -31,6 +31,19 @@ test.describe("status", () => {
 		}
 	});
 
+	test("displays the single supported ARM64 ABI", async ({ page }) => {
+		await page.goto("/");
+		await expect(main(page).getByText("arm64-v8a", { exact: true })).toBeVisible();
+		await expect(main(page).getByText("ARM64 Zygote", { exact: true })).toBeVisible();
+		await expect(
+			main(page).getByText(
+				"Injection is limited to 64-bit ARM processes; 32-bit ARM, x86 and x86_64 are not supported.",
+				{ exact: true },
+			),
+		).toBeVisible();
+		await expect(main(page).getByText("Zygote 32-bit", { exact: true })).toHaveCount(0);
+	});
+
 	test("reports a zygote that has not been injected yet as pending, not failed", async ({
 		page,
 	}) => {

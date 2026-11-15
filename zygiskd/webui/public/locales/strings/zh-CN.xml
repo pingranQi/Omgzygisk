@@ -26,9 +26,10 @@
 	<string name="status_daemon">守护进程</string>
 	<string name="status_root">Root 方案</string>
 	<string name="status_version">版本</string>
-	<string name="status_zygote_section">Zygote</string>
-	<string name="status_zygote64">Zygote 64 位</string>
-	<string name="status_zygote32">Zygote 32 位</string>
+	<string name="status_zygote_section">Zygote（ARM64）</string>
+	<string name="status_supported_abi">支持的 ABI</string>
+	<string name="status_zygote_arm64">ARM64 Zygote</string>
+	<string name="status_arch_notice">仅支持 64 位 ARM 进程注入；不支持 ARMv7、x86 和 x86_64。</string>
 	<string name="status_install_section">安装</string>
 	<string name="status_installed">模块文件</string>
 	<string name="status_installed_yes">已安装</string>
@@ -88,5 +89,5 @@
 	<string name="settings_mount_mode_global">全局挂载</string>
 	<string name="settings_about_section">关于</string>
 	<string name="settings_authors">作者</string>
-	<string name="settings_about_text">基于 ptrace 的 Zygisk 实现，支持 FN（Functional Node）模块。fork 自 NeoZygisk。</string>
+	<string name="settings_about_text">基于 ptrace 的 ARM64（arm64-v8a）Zygisk 实现，支持 FN（Functional Node）模块。fork 自 NeoZygisk。</string>
 </resources>

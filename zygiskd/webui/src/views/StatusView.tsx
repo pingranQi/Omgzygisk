@@ -88,11 +88,8 @@ function flag(on: boolean | undefined, yes: string, no: string): string {
 export function StatusView({ snapshot }: StatusViewProps) {
 	const state = snapshot.state;
 	const monitor = rowValue(state?.monitor, "monitor");
-	const daemon =
-		rowValue(state?.monitor, "daemon64") ??
-		rowValue(state?.monitor, "daemon32");
+	const daemon = rowValue(state?.monitor, "daemon64");
 	const zygote64 = rowValue(state?.monitor, "zygote64");
-	const zygote32 = rowValue(state?.monitor, "zygote32");
 	const detail = (state?.monitor ?? []).filter((row) => row.label === null);
 	const overall = overallLabel(deriveOverallState(snapshot.status, state));
 
@@ -191,19 +188,26 @@ export function StatusView({ snapshot }: StatusViewProps) {
 				</Card>
 			</div>
 
-			<SectionHeader>{tr("status_zygote_section", "Zygote")}</SectionHeader>
+			<SectionHeader>{tr("status_zygote_section", "Zygote (ARM64)")}</SectionHeader>
 			<div className="px-4">
 				<Card className="flex flex-col gap-4">
 					<StatusField
-						label={tr("status_zygote64", "Zygote 64-bit")}
+						label={tr("status_supported_abi", "Supported ABI")}
+						value="arm64-v8a"
+						tone="normal"
+					/>
+					<Divider />
+					<StatusField
+						label={tr("status_zygote_arm64", "ARM64 Zygote")}
 						value={zygote64 ?? absent}
 						tone={toneOf(zygote64)}
 					/>
-					<StatusField
-						label={tr("status_zygote32", "Zygote 32-bit")}
-						value={zygote32 ?? absent}
-						tone={toneOf(zygote32)}
-					/>
+					<p className="text-onx-caption text-onx-muted">
+						{tr(
+							"status_arch_notice",
+							"Injection is limited to 64-bit ARM processes; 32-bit ARM, x86 and x86_64 are not supported.",
+						)}
+					</p>
 				</Card>
 			</div>
 

@@ -21,13 +21,9 @@ android {
 // AGP 9 removed `android.ndkDirectory`; resolve the NDK lazily through the provider.
 val ndkDirProvider = androidComponents.sdkComponents.ndkDirectory
 
-// Android ABI -> Rust target triple. cargo-ndk accepts the ABI names directly for `-t`;
-// the triple is only needed to locate the compiled binary inside the target directory.
+// Android ABI -> Rust target triple. The release package is ARM64-only.
 val abiToTriple = linkedMapOf(
     "arm64-v8a" to "aarch64-linux-android",
-    "armeabi-v7a" to "armv7-linux-androideabi",
-    "x86" to "i686-linux-android",
-    "x86_64" to "x86_64-linux-android",
 )
 
 listOf("Debug", "Release").forEach { variantCap ->
@@ -50,7 +46,7 @@ listOf("Debug", "Release").forEach { variantCap ->
             val outJniDir = layout.buildDirectory.dir("intermediates/rust/$profileName/jniLibs").get().asFile
             val symbolDir = layout.buildDirectory.dir("symbols/$profileName").get().asFile
 
-            // cargo-ndk wires the correct NDK linker/ar per ABI; one invocation builds every ABI.
+            // cargo-ndk wires the ARM64 NDK linker/ar for the supported ABI.
             // Use the long `--platform` flag: it is stable across cargo-ndk 3.x and 4.x,
             // unlike the short flag which was renamed from `-p` to `-P` in 4.0.3.
             val cargoArgs = mutableListOf("cargo", "ndk", "--platform", androidMinSdkVersion.toString())
