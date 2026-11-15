@@ -31,6 +31,10 @@ Daemon protocol values 0–13 are preserved. Native ZN commands are appended at
 
 ## ZN API v4
 
+The API table accepts Native ZN core API versions 1–4. Version 1 receives
+the compatibility table without symbol-resolver support; versions 2–3 receive
+the symbol-resolver table without the v4 runtime accessor; version 4 receives
+the full table. Companion connection is available to module API v3 and newer.
 The API table includes PLT and inline hooks, symbol resolver methods,
 companion connection, and runtime discovery. PLT hooking uses the existing
 LSPlt integration; inline hooks use Dobby. Symbol resolution extends the

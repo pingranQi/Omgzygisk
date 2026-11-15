@@ -53,7 +53,7 @@ bool loadEntry(zygiskd::ZnPlanEntry &entry, size_t &system_loaded) {
     }
 
     auto *module = reinterpret_cast<ZygiskNextModule *>(loaded.entry);
-    if (!module || !module->onModuleLoaded || module->target_api_version < 3 ||
+    if (!module || !module->onModuleLoaded || module->target_api_version < 1 ||
         module->target_api_version > ZYGISK_NEXT_API_VERSION) {
         LOGW("ZN: %s has no compatible zn_module export", entry.lib_path.c_str());
         (void) UnloadModule(loaded.handle, loaded.custom);
