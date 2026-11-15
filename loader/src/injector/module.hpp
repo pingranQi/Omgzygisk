@@ -332,12 +332,10 @@ struct HookContext {
     bool should_spoof_maps = false;
     bool should_unmap = false;
     bool skip_hooking_unloader = false;
-    bool zygote_unmounted = false;
     jint MODIFIER_NATIVE = 0;
     jmethodID member_getModifiers = nullptr;
     std::vector<lsplt::MapInfo> cached_map_infos = {};
     std::vector<std::tuple<dev_t, ino_t, const char *, void **>> plt_backup;
-    std::vector<mount_info> zygote_traces;
 
     HookContext(void *start_addr, size_t block_size);
 
