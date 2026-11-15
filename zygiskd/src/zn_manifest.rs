@@ -46,7 +46,9 @@ pub fn parse_line(line: &str) -> Option<ManifestEntry> {
 impl ManifestEntry {
     pub fn matches(&self, process_name: &str, process_path: &str) -> bool {
         match &self.target {
-            Target::Name(name) if name == "zygote" => {
+            Target::Name(name)
+                if matches!(name.as_str(), "zygote" | "zygote64" | "zygote32") =>
+            {
                 process_name.contains("zygote") || process_name.contains("app_process")
             }
             Target::Name(name) => process_name == name,
@@ -81,6 +83,16 @@ mod tests {
         assert!(entry.matches("zygote64", "/system/bin/app_process64"));
         assert!(entry.matches("app_process32", "/system/bin/app_process32"));
         assert!(!entry.matches("system_server", "/system/bin/system_server"));
+    }
+
+    #[test]
+    fn zygote32_and_zygote64_targets_follow_zygote_matching() {
+        for target in ["zygote32", "zygote64"] {
+            let entry = parse_line(&format!("name={target} lib.so")).unwrap();
+            assert!(entry.matches("zygote64", "/system/bin/app_process64"));
+            assert!(entry.matches("zygote", "/system/bin/app_process32"));
+            assert!(!entry.matches("system_server", "/system/bin/system_server"));
+        }
     }
 
     #[test]
