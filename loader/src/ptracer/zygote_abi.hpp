@@ -41,7 +41,7 @@ public:
 
 private:
     bool is_in_crash_loop();
-    bool ensure_daemon_created();
+    bool ensure_daemon_created(bool reset_zygote_state);
 
     Status status_;
     StartCounter counter;
