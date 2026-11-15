@@ -1,105 +1,150 @@
 <div align="center">
 
-<img src="assets/tux.png" alt="OnyxZygisk" width="128">
+<img src="assets/tux.png" alt="OmgZygisk" width="128">
 
-# OnyxZygisk
+# OmgZygisk
 
-**开箱即用的 Zygisk 运行时 —— 全 Root 方案通用。**
+**面向 ARM64 Android 的用户态 Zygisk 实现。**
 
-基于 ptrace 的 Zygisk 实现，内置 WebUI、可热插拔的 FN 模块和进阶 DenyList。无需内核模块。
+OmgZygisk 提供经典 Zygisk 模块加载、Native Zygisk Next（ZN）API、内置 WebUI 和可热插拔的 Functional Node（FN）模块，无需自定义内核模块。
 
-**架构支持：仅 ARM64（`arm64-v8a`）。** 不再构建或打包 ARMv7（`armeabi-v7a`）、x86 和 x86_64 二进制文件。安装器会拒绝非 ARM64 设备，且不支持 32 位进程注入。
+**架构支持：仅 ARM64（`arm64-v8a`）。** 不提供 ARMv7（`armeabi-v7a`）、x86 或 x86_64 构建，也不支持 32 位进程注入。
 
-[![Telegram](https://img.shields.io/badge/Telegram-OnyxZygisk-2CA5E0?logo=telegram&logoColor=white)](https://t.me/OnyxZygisk)
-[![Release](https://img.shields.io/github/v/release/OnyxZygisk/OnyxZygisk?label=最新版&color=brightgreen)](https://github.com/OnyxZygisk/OnyxZygisk/releases/latest)
+[![Release](https://img.shields.io/github/v/release/pingranQi/Omgzygisk?label=最新版&color=brightgreen)](https://github.com/pingranQi/Omgzygisk/releases/latest)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 
 [English](README.md) · **简体中文** · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md)
+
+[版本发布](https://github.com/pingranQi/Omgzygisk/releases) · [问题反馈](https://github.com/pingranQi/Omgzygisk/issues) · [源代码](https://github.com/pingranQi/Omgzygisk)
 
 </div>
 
 ---
 
-## 为什么选择 OnyxZygisk？
+## 项目概览
 
-### Root 方案无关
+OmgZygisk 基于 ptrace 用户态进程注入，面向常见 Android Root 方案，同时提供经典 Zygisk 模块接口和 Native ZN 兼容接口。
 
-开箱兼容 **APatch**、**KernelSU**（含 LKM 延迟加载）和 **Magisk**。更换 Root 方案无需更换 Zygisk —— 一个模块全部搞定。
+| 能力 | 说明 |
+| :--- | :--- |
+| **Root 方案** | APatch、KernelSU（包括 LKM 延迟加载）和 Magisk |
+| **架构** | 仅 ARM64 / `arm64-v8a` |
+| **模块 API** | 经典 Zygisk API、Native ZN API v1–v4 |
+| **注入方式** | 用户态 ptrace，无需自定义内核模块 |
+| **管理方式** | 内置 WebUI、Functional Node 模块 |
+| **内存布局** | 优先选择带保护边界的高地址 VMA 空洞 |
 
-### 零重启工作流
+## 功能特性
 
-- **热插拔** —— 启用或禁用 Zygisk 模块无需重启。
-- **FN 模块** —— 声明式、按作用域、可热插拔的扩展节点，下次应用启动即刻生效。[了解更多 →](docs/FN.md)
+### 多 Root 方案支持
+
+支持 **APatch**、**KernelSU** 和 **Magisk**。注入与模块加载运行在用户态，不依赖单独的内核模块。
+
+### 经典 Zygisk 与 Native ZN API
+
+除经典 Zygisk 模块外，还实现 Native ZN API v1–v4 兼容接口，包括：
+
+- 通过 LSPlt 实现 PLT Hook，通过 Dobby 实现 Inline Hook。
+- 符号解析器创建、查找与遍历。
+- Companion 连接和 Runtime 查询。
+- 根据 API 版本提供相应的兼容 API 表。
+
+详见 [Native ZN API 与 HyperOS Runtime](docs/ZN_API.md)。
+
+### HyperOS Runtime
+
+包含面向 `hyos_spawner` 进程模型的 HyperOS Runtime 集成，可在应用专用化生命周期中触发 Native ZN Runtime 回调。
+
+**验证状态：** 当前代码已通过构建和 CI 检查，但尚未在实体 HyperOS 设备上验证。不同 HyperOS 版本的私有 `hyos_spawner` 符号及 ABI 可能存在差异。在目标设备和系统版本完成测试前，请将此功能视为实验性实现。
+
+### Functional Node（FN）模块
+
+FN 模块通过声明式描述文件、进程作用域和触发点扩展经典模块机制：
+
+- 启用或禁用节点无需重启；变更在下次匹配的进程 fork 时生效。
+- 按应用和进程类型指定作用范围。
+- 同时支持 Native 入口库和可选启动脚本。
+- 可通过 WebUI 安装与管理。
+
+详见 [FN 模块文档](docs/FN.md)。
 
 ### 内置 WebUI
 
-基于 React + Vite + Tailwind CSS 构建的完整控制面板，由 KernelSU / APatch Manager / MMRL 本地读取 —— 无需网络端口，无需服务进程。状态、模块列表、FN 管理、logcat 查看器与设置。严格单色设计，提供浅色 / 深色 / 纯黑主题。[了解更多 →](docs/WEBUI.md)
+WebUI 使用 React、Vite 和 Tailwind CSS 构建，通过 Root 管理器的 WebView 与 JavaScript Bridge 加载静态资源，不会监听网络端口。
 
-### 进阶隐藏
+提供运行状态、守护进程、Root 方案、Zygote 状态、模块管理、FN 节点、日志查看和外观设置等功能。详见 [WebUI 文档](docs/WEBUI.md)。
 
-双层 DenyList，让 Root 痕迹对检测类应用完全不可见：
+### DenyList 与挂载隔离
 
-| 策略 | 工作原理 |
+DenyList 使用两阶段策略，降低指定应用进程中 Root 与模块挂载的可见性：
+
+| 策略 | 作用 |
 | :--- | :--- |
-| **Zygote 卸载**（主策略） | 在应用进程 specialize *之前*，从 zygote 剥离 root 与模块挂载。 |
-| **命名空间切换**（回退） | fork 后通过 `setns` 将应用移入缓存好的、完全干净的挂载命名空间。 |
+| **Zygote 卸载** | 在应用专用化之前，从 zygote 移除选定的 Root 和模块挂载。 |
+| **命名空间切换** | 作为回退方案，将应用进程切换到干净的挂载命名空间。 |
 
-`/proc/self/maps` 无痕迹、无泄漏的挂载点、无残留的文件描述符。
+实际行为会受到 Root 方案、Android 版本和目标进程影响，请针对目标应用测试配置。
 
-### 纯用户态，无内核模块
+### 高地址 VMA 布局
 
-纯 ptrace 注入 —— 无需构建、维护或在内核更新后修复自定义内核模块。支持所有启用 `PTRACE_SEIZE` 的内核。
+注入加载器优先选择带保护边界的高地址虚拟内存空洞，以降低与现有内存映射发生冲突的可能性。
 
 ---
 
-## 快速上手
+## 安装
 
-### 安装
+1. 从 [GitHub Releases](https://github.com/pingranQi/Omgzygisk/releases/latest) 下载最新可刷入 ZIP。
+2. 使用 APatch、KernelSU 或 Magisk 安装。
+3. 重启设备。
+4. 在 Root 管理器的模块页面打开 WebUI。
 
-从[最新 Release](https://github.com/OnyxZygisk/OnyxZygisk/releases/latest) 下载 zip，在 Root 管理器（APatch / KernelSU / Magisk）中刷入并重启。
+**设备要求：** ARM64 Android。安装包不包含 ARMv7、x86 或 x86_64 版本。
 
-### 配置 DenyList
+### 配置应用隔离
 
-| Root 方案 | 操作位置 |
+| Root 方案 | 设置 |
 | :--- | :--- |
-| **APatch / KernelSU** | 为目标应用启用 **卸载模块** |
-| **Magisk** | **配置 DenyList**（保持 Magisk 自带的"强制 DenyList"**关闭**） |
+| **APatch / KernelSU** | 可针对目标应用启用 **Umount modules（卸载模块）**。 |
+| **Magisk** | 配置 DenyList；使用 OmgZygisk 自身隔离流程时，保持 Magisk 自带的 **Enforce DenyList** 关闭。 |
 
-### 打开 WebUI
-
-在 KernelSU Manager、APatch Manager 或 MMRL 中打开模块页面，点击 **WebUI**。
+具体行为可能因 Root 管理器和 Android 版本而异。
 
 ---
 
 ## 从源码构建
 
 ```sh
-git clone https://github.com/OnyxZygisk/OnyxZygisk.git
-cd OnyxZygisk
+git clone https://github.com/pingranQi/Omgzygisk.git
+cd Omgzygisk
 ./gradlew :module:zipRelease
 ```
 
-可刷入的 zip 输出到 `module/build/outputs/release/`。
+可刷入 ZIP 输出到 `module/build/outputs/release/`。WebUI 构建需要 Node.js 和 pnpm，Gradle 会在模块打包流程中调用 WebUI 构建任务。
 
----
+## 文档
 
-## 社区
+- [Native ZN API 与 HyperOS Runtime](docs/ZN_API.md)
+- [Functional Node 模块](docs/FN.md)
+- [WebUI 架构与功能](docs/WEBUI.md)
+- [自定义 Linker 集成](docs/CUSTOM_LINKER.md)
+- [许可证与上游声明](NOTICE.md)
 
-[![Telegram Channel](https://img.shields.io/badge/Telegram-OnyxZygisk-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/OnyxZygisk)
+## 问题反馈
 
-加入 Telegram 频道，获取版本发布公告、讨论与技术支持。
-
----
+请通过 [GitHub Issues](https://github.com/pingranQi/Omgzygisk/issues) 提交可复现的问题或功能建议。请附上 Android 版本、设备 ABI、Root 方案及版本、OmgZygisk 构建版本和相关日志。请勿提交私钥、个人数据或敏感设备标识。
 
 ## 致谢
 
-OnyxZygisk 基于以下项目构建并受其启发：
+OmgZygisk 使用或基于以下开源项目构建：
 
 - **Zygisk API** —— [topjohnwu](https://github.com/topjohnwu) / [Magisk](https://github.com/topjohnwu/Magisk)
 - **Zygisk Next** —— [Dr-TSNG](https://github.com/Dr-TSNG/ZygiskNext)
 - **NeoZygisk** —— [JingMatrix](https://github.com/JingMatrix/NeoZygisk)
-- **OnyxZygisk** —— Sai, Matsuzaka Yuki 与[贡献者们](https://github.com/OnyxZygisk/OnyxZygisk/graphs/contributors)
+- **LSPlt** —— PLT Hook 实现，保留其上游许可证。
+- **Dobby** —— Inline Hook 实现，保留其上游许可证。
 
 ## 许可证
 
-[AGPL-3.0](LICENSE)。OnyxZygisk 是 NeoZygisk (GPL-3.0) 的下游，集成了 CSOLoader (AGPL-3.0) 作为进程内自定义模块加载器；依据 GPL-3.0 §13，组合作品以 AGPL-3.0 发布。上游 GPL-3.0 声明保留 —— 详见 [NOTICE.md](NOTICE.md)。
+OmgZygisk 使用 [GNU Affero General Public License v3.0](LICENSE) 发布。仓库包含采用各自许可证的上游代码与第三方组件；相关版权和许可证声明均予以保留，详见 [NOTICE.md](NOTICE.md) 及各组件目录。
+
+为兼容现有安装，部分内部模块标识符和设备数据目录仍可能使用 `onyxzygisk` 标识。
