@@ -459,19 +459,24 @@ void ZygiskContext::app_specialize_pre() {
         // App zygotes (including webview_zygote) outlive the specialization
         // call and serve as parents for later processes. Never mutate their
         // mount tree in place; use the daemon-held clean namespace instead.
-        if ((info_flags & MOUNT_MODE_SETNS) || is_app_zygote) {
+        if (is_app_zygote) {
+            // App zygotes outlive specialization and parent future processes.
             if (!update_mount_namespace(zygiskd::MountNamespace::Clean)) {
                 LOGE("failed to switch [%s] into the cached clean mount namespace", process);
             }
-        } else if (unshare(CLONE_NEWNS) != 0) {
-            PLOGE("unshare(CLONE_NEWNS) for [%s]", process);
-            if (!update_mount_namespace(zygiskd::MountNamespace::Clean)) {
-                LOGE("failed to fall back to the cached clean mount namespace for [%s]", process);
-            }
-        } else if (!revert_root_traces_here(info_flags)) {
-            LOGW("in-place mount revert failed for [%s]; switching to the clean namespace", process);
-            if (!update_mount_namespace(zygiskd::MountNamespace::Clean)) {
-                LOGE("failed to fall back to the cached clean mount namespace for [%s]", process);
+        } else if (!(info_flags & MOUNT_MODE_SETNS)) {
+            // Revert-only owns its private mount tree. Namespace Switch keeps
+            // its existing unshare-hook timing below.
+            if (unshare(CLONE_NEWNS) != 0) {
+                PLOGE("unshare(CLONE_NEWNS) for [%s]", process);
+                if (!update_mount_namespace(zygiskd::MountNamespace::Clean)) {
+                    LOGE("failed to fall back to the cached clean mount namespace for [%s]", process);
+                }
+            } else if (!revert_root_traces_here(info_flags)) {
+                LOGW("in-place mount revert failed for [%s]; switching to the clean namespace", process);
+                if (!update_mount_namespace(zygiskd::MountNamespace::Clean)) {
+                    LOGE("failed to fall back to the cached clean mount namespace for [%s]", process);
+                }
             }
         }
     }
@@ -483,7 +488,8 @@ void ZygiskContext::app_specialize_pre() {
     // Match the fallback semantics: do this after callbacks, so the module can
     // still perform its own mount setup before the process is moved to Clean.
     if (!skip_zygiskd && !on_denylist && !is_webview_zygote && !privileged &&
-        (flags & DO_REVERT_UNMOUNT) && !(info_flags & MOUNT_MODE_GLOBAL)) {
+        (flags & DO_REVERT_UNMOUNT) &&
+        !(info_flags & (MOUNT_MODE_GLOBAL | MOUNT_MODE_SETNS))) {
         if (!update_mount_namespace(zygiskd::MountNamespace::Clean)) {
             LOGW("module-requested mount revert could not switch [%s] into Clean", process);
         }
