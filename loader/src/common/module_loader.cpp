@@ -34,10 +34,10 @@ extern "C" {
 #define USE_CUSTOM_LOADER 1
 #endif
 
-static constexpr const char *ENTRY_SYMBOL = "zygisk_module_entry";
+static constexpr const char *DEFAULT_ENTRY_SYMBOL = "zygisk_module_entry";
 
 /// System-linker path: android_dlopen_ext from the memfd, then resolve entry.
-static LoadedModule LoadViaSystemLinker(int memfd) {
+static LoadedModule LoadViaSystemLinker(int memfd, const char *entry_symbol) {
     LoadedModule out;
 
     void *handle = DlopenMem(memfd, RTLD_NOW);
@@ -46,11 +46,11 @@ static LoadedModule LoadViaSystemLinker(int memfd) {
         return out;
     }
 
-    void *entry = dlsym(handle, ENTRY_SYMBOL);
+    void *entry = dlsym(handle, entry_symbol);
     if (!entry) {
-        LOGW("module handle %p has no `%s` symbol", handle, ENTRY_SYMBOL);
-        // Leave handle set so a caller could still close it; entry stays null,
-        // so the module is treated as unusable (operator bool == false).
+        LOGW("module handle %p has no `%s` symbol", handle, entry_symbol);
+        dlclose(handle);
+        return out;
     }
 
     out.handle = handle;
@@ -63,7 +63,7 @@ static LoadedModule LoadViaSystemLinker(int memfd) {
 /// Custom-loader path: map + link the module in-process via CSOLoader, so it
 /// never enters the system linker's solist. Returns a falsy LoadedModule on any
 /// failure so the caller can fall back to the system linker.
-static LoadedModule LoadViaCustomLinker(int memfd) {
+static LoadedModule LoadViaCustomLinker(int memfd, const char *entry_symbol) {
     LoadedModule out;
 
     // CSOLoader loads by path; a memfd is reachable through its procfs link.
@@ -77,9 +77,9 @@ static LoadedModule LoadViaCustomLinker(int memfd) {
         return out;
     }
 
-    void *entry = csoloader_get_symbol(lib, ENTRY_SYMBOL);
+    void *entry = csoloader_get_symbol(lib, entry_symbol);
     if (!entry) {
-        LOGW("custom-loaded module has no `%s` symbol; falling back", ENTRY_SYMBOL);
+        LOGW("custom-loaded module has no `%s` symbol; falling back", entry_symbol);
         csoloader_unload(lib);
         delete lib;
         return out;
@@ -98,17 +98,19 @@ static LoadedModule LoadViaCustomLinker(int memfd) {
 // csoloader_deinit() with no prior csoloader_load() would delete a pthread
 // TLS key that was never created).
 static bool g_used_custom_loader = false;
+static bool g_custom_loader_pinned = false;
 
-LoadedModule LoadModuleFromMemfd(int memfd) {
+LoadedModule LoadModuleFromMemfd(int memfd, const char *entry_symbol) {
+    if (!entry_symbol || !entry_symbol[0]) entry_symbol = DEFAULT_ENTRY_SYMBOL;
 #if USE_CUSTOM_LOADER
-    if (LoadedModule lm = LoadViaCustomLinker(memfd)) {
+    if (LoadedModule lm = LoadViaCustomLinker(memfd, entry_symbol)) {
         LOGV("loaded module from fd %d via custom linker", memfd);
         g_used_custom_loader = true;
         return lm;
     }
     // Custom path failed — fall through to the always-available system linker.
 #endif
-    return LoadViaSystemLinker(memfd);
+    return LoadViaSystemLinker(memfd, entry_symbol);
 }
 
 bool UnloadModule(void *handle, bool custom) {
@@ -126,9 +128,14 @@ bool UnloadModule(void *handle, bool custom) {
 }
 
 void DeinitCustomLoaderIfUsed() {
-    if (!g_used_custom_loader) return;
+    if (!g_used_custom_loader || g_custom_loader_pinned) return;
     csoloader_deinit();
     // Defensive: a second call in the same process becomes a no-op rather
     // than tearing down already-torn-down global state.
     g_used_custom_loader = false;
+}
+
+
+void RetainCustomLoaderForProcessLifetime() {
+    g_custom_loader_pinned = true;
 }

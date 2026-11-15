@@ -2,6 +2,7 @@
 
 #include <link.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -31,7 +32,7 @@ public:
      * @param library_name A view of the library's name (e.g., "libc.so").
      *        The class will find the full path of the loaded library.
      */
-    explicit ElfImage(std::string_view library_name);
+    explicit ElfImage(std::string_view library_name, void *base_address = nullptr);
 
     /**
      * @brief Destructor that unmaps the memory-mapped ELF file.
@@ -50,6 +51,13 @@ public:
      * @return The absolute virtual address of the symbol if found; otherwise, 0.
      */
     ElfW(Addr) findSymbolAddress(std::string_view symbol_name) const;
+    ElfW(Addr) findSymbolAddress(std::string_view symbol_name, size_t *size) const;
+
+    /// Runtime load base of the resolved ELF image.
+    void *getBaseAddress() const { return base_address_; }
+
+    using SymbolCallback = bool (*)(const char *name, void *address, size_t size, void *data);
+    void forEachSymbol(SymbolCallback callback, void *data) const;
 
     /**
      * @brief A template helper to get the symbol address cast to a specific type.
@@ -155,6 +163,7 @@ private:
 
     // Pointers to key ELF sections
     ElfW(Sym) * dynsym_ = nullptr;
+    ElfW(Off) dynsym_count_ = 0;
     const char* dynstr_ = nullptr;
     ElfW(Sym) * symtab_ = nullptr;
     const char* strtab_ = nullptr;

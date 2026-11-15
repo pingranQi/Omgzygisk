@@ -3,8 +3,8 @@
 /*
  * Module loading seam.
  *
- * All Zygisk / FN module libraries are brought into the target process through
- * this one entry point. Today it wraps the system dynamic linker
+ * Zygisk, FN and Native ZN libraries are brought into the target process
+ * through this one entry point. Today it wraps the system dynamic linker
  * (android_dlopen_ext, via DlopenMem). It exists so that an in-process custom
  * ELF loader — one that maps the module without registering it in the linker's
  * solist — can be dropped in behind a single interface, with the system linker
@@ -22,11 +22,11 @@ struct LoadedModule {
     /// Opaque handle for symbol lookups and, eventually, unloading.
     /// For the system-linker path this is the dlopen() handle.
     void *handle = nullptr;
-    /// Resolved address of the module's `zygisk_module_entry` symbol, or null
-    /// if the library failed to load or does not export the entry point.
+    /// Resolved address of the caller-selected exported symbol, or null if
+    /// the library failed to load or does not export that symbol.
     void *entry = nullptr;
-    /// True once the in-process custom linker (not the system linker) produced
-    /// this handle. Always false in the current stage.
+    /// True when the in-process CSOLoader (not the system linker) produced
+    /// this handle.
     bool custom = false;
 
     /// A module is usable only if its entry point resolved.
@@ -34,13 +34,18 @@ struct LoadedModule {
 };
 
 /**
- * @brief Load a Zygisk/FN module library from a memfd and resolve its entry.
+ * @brief Load a module library from a memfd and resolve an exported symbol.
+ *
+ * The custom CSOLoader path is attempted first, with android_dlopen_ext as a
+ * fallback. Existing Zygisk/FN callers use the default `zygisk_module_entry`
+ * symbol; Native ZN callers request `zn_module`.
  *
  * @param memfd A file descriptor holding the shared library image.
- * @return The handle + resolved `zygisk_module_entry`; falsy if either the
- *         load or the symbol lookup failed.
+ * @param entry_symbol Exported symbol to resolve.
+ * @return The handle + resolved symbol; falsy if loading or lookup fails.
  */
-LoadedModule LoadModuleFromMemfd(int memfd);
+LoadedModule LoadModuleFromMemfd(int memfd,
+                                 const char *entry_symbol = "zygisk_module_entry");
 
 /**
  * @brief Unload a module handle previously returned by LoadModuleFromMemfd.
@@ -67,3 +72,13 @@ bool UnloadModule(void *handle, bool custom);
  * corrupts that module's state instead of merely leaking memory.
  */
 void DeinitCustomLoaderIfUsed();
+
+/**
+ * @brief Pin CSOLoader's process-wide state until process exit.
+ *
+ * Native ZN modules intentionally remain resident for the process lifetime.
+ * If any such module was loaded by CSOLoader, a later Zygisk module cleanup
+ * must not tear down the shared TLS/runtime state while the ZN module remains
+ * mapped and may still use it.
+ */
+void RetainCustomLoaderForProcessLifetime();

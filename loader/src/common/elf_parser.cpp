@@ -15,11 +15,16 @@ static T* pointer_at(void* map_base, ElfW(Off) offset) {
     return reinterpret_cast<T*>(reinterpret_cast<uintptr_t>(map_base) + offset);
 }
 
-ElfImage::ElfImage(std::string_view library_name) {
+ElfImage::ElfImage(std::string_view library_name, void *base_address) {
+    // An explicit load base is useful for images whose path is known but which
+    // are not discoverable through dl_iterate_phdr (for example, custom-loaded
+    // images). In that case parse the supplied file path directly.
     if (!findLoadedLibraryInfo(library_name)) {
-        // If the library is not loaded in the process, we cannot proceed.
-        return;
+        if (!base_address) return;
+        library_path_.assign(library_name.data(), library_name.size());
     }
+
+    if (base_address) base_address_ = base_address;
 
     int fd = open(library_path_.c_str(), O_RDONLY | O_CLOEXEC);
     if (fd < 0) {
@@ -67,6 +72,7 @@ ElfImage::ElfImage(std::string_view library_name) {
         switch (shdr->sh_type) {
         case SHT_DYNSYM:
             dynsym_ = pointer_at<ElfW(Sym)>(map_base_, shdr->sh_offset);
+            dynsym_count_ = shdr->sh_entsize ? shdr->sh_size / shdr->sh_entsize : 0;
             break;
         case SHT_SYMTAB:
             symtab_ = pointer_at<ElfW(Sym)>(map_base_, shdr->sh_offset);
@@ -109,19 +115,63 @@ ElfImage::~ElfImage() {
 }
 
 ElfW(Addr) ElfImage::findSymbolAddress(std::string_view symbol_name) const {
-    // Find the symbol's offset within the ELF file.
-    ElfW(Addr) offset = findSymbolOffset(symbol_name, calculateGnuHash(symbol_name),
-                                         calculateSysvHash(symbol_name));
+    return findSymbolAddress(symbol_name, nullptr);
+}
 
-    if (offset > 0 && base_address_ != nullptr) {
-        // The final virtual address is:
-        // base_address (where the library was loaded) + symbol_offset - load_bias
-        // This adjustment is necessary because the symbol offset is relative to a
-        // virtual address of 0, but the library is loaded at a non-zero base address.
-        return static_cast<ElfW(Addr)>(reinterpret_cast<uintptr_t>(base_address_) + offset - bias_);
+ElfW(Addr) ElfImage::findSymbolAddress(std::string_view symbol_name, size_t *size) const {
+    if (size) *size = 0;
+    const ElfW(Addr) offset = findSymbolOffset(symbol_name, calculateGnuHash(symbol_name),
+                                               calculateSysvHash(symbol_name));
+    if (offset == 0 || !base_address_) return 0;
+
+    if (size && dynsym_ && dynstr_) {
+        for (ElfW(Off) i = 0; i < dynsym_count_; ++i) {
+            const ElfW(Sym) *symbol = &dynsym_[i];
+            if (symbol->st_name != 0 && symbol_name == &dynstr_[symbol->st_name]) {
+                *size = symbol->st_size;
+                break;
+            }
+        }
+    }
+    if (size && *size == 0 && symtab_ && strtab_) {
+        for (ElfW(Off) i = 0; i < symtab_count_; ++i) {
+            const ElfW(Sym) *symbol = &symtab_[i];
+            if (symbol->st_name != 0 && symbol_name == &strtab_[symbol->st_name]) {
+                *size = symbol->st_size;
+                break;
+            }
+        }
     }
 
-    return 0;
+    return static_cast<ElfW(Addr)>(reinterpret_cast<uintptr_t>(base_address_) +
+                                   offset - bias_);
+}
+
+void ElfImage::forEachSymbol(SymbolCallback callback, void *data) const {
+    if (!callback || !base_address_) return;
+    const uintptr_t base = reinterpret_cast<uintptr_t>(base_address_);
+
+    if (dynsym_ && dynstr_) {
+        for (ElfW(Off) i = 0; i < dynsym_count_; ++i) {
+            const ElfW(Sym) &symbol = dynsym_[i];
+            if (symbol.st_shndx == SHN_UNDEF || symbol.st_name == 0) continue;
+            const char *name = &dynstr_[symbol.st_name];
+            if (!name[0]) continue;
+            const uintptr_t address = base + symbol.st_value - bias_;
+            if (!callback(name, reinterpret_cast<void *>(address), symbol.st_size, data)) return;
+        }
+    }
+
+    if (symtab_ && strtab_) {
+        for (ElfW(Off) i = 0; i < symtab_count_; ++i) {
+            const ElfW(Sym) &symbol = symtab_[i];
+            if (symbol.st_shndx == SHN_UNDEF || symbol.st_name == 0) continue;
+            const char *name = &strtab_[symbol.st_name];
+            if (!name[0]) continue;
+            const uintptr_t address = base + symbol.st_value - bias_;
+            if (!callback(name, reinterpret_cast<void *>(address), symbol.st_size, data)) return;
+        }
+    }
 }
 
 ElfW(Addr) ElfImage::findSymbolOffset(std::string_view symbol_name, uint32_t gnu_hash,
@@ -253,6 +303,14 @@ ElfW(Addr) ElfImage::findSymbolByLinearScan(std::string_view symbol_name) {
 }
 
 std::string_view ElfImage::findSymbolNameByPrefix(std::string_view prefix) {
+    if (dynsym_ && dynstr_) {
+        for (ElfW(Off) i = 0; i < dynsym_count_; ++i) {
+            const ElfW(Sym) *symbol = &dynsym_[i];
+            if (symbol->st_shndx == SHN_UNDEF || symbol->st_name == 0) continue;
+            const std::string_view name(&dynstr_[symbol->st_name]);
+            if (name.starts_with(prefix)) return name;
+        }
+    }
     buildSymbolCache();
     for (const auto& pair : symbol_cache_) {
         std::string_view symbol_name = pair.first;

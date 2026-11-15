@@ -85,6 +85,14 @@ pub enum DaemonSocketAction {
     ReadFnModules,
     /// Opens an FN node's directory by node id.
     GetFnModuleDir,
+    /// Root monitor asks whether an exec target has an enabled Native ZN module.
+    CheckZnTarget,
+    /// Returns the Native ZN plan and sealed library descriptors for this process.
+    GetZnPlan,
+    /// Requests the optional companion socket for a Native ZN module.
+    RequestZnCompanionSocket,
+    /// Reports successful or failed Native ZN module initialization.
+    ReportZnModule,
 }
 
 bitflags! {

@@ -612,6 +612,12 @@ void AppMonitor::SigChldHandler::handleTracedProcess(int pid, int &status) {
  */
 bool AppMonitor::SigChldHandler::handleExecEvent(int pid, int &status) {
     auto program = get_program(pid);
+    constexpr char kDeletedSuffix[] = " (deleted)";
+    if (program.size() >= sizeof(kDeletedSuffix) - 1 &&
+        program.compare(program.size() - (sizeof(kDeletedSuffix) - 1),
+                        sizeof(kDeletedSuffix) - 1, kDeletedSuffix) == 0) {
+        program.resize(program.size() - (sizeof(kDeletedSuffix) - 1));
+    }
     LOGV("process %d executed program: %s", pid, program.c_str());
 
     bool handled = false;
@@ -639,7 +645,59 @@ bool AppMonitor::SigChldHandler::handleExecEvent(int pid, int &status) {
         }
 
         if (program != monitor_.get_abi_manager().program_path_) {
-            break;  // Irrelevant program, exit block and return false.
+            // Native ZN targets are bootstrapped at exec time, independently
+            // of the Zygote module lifecycle. Start zygiskd lazily so this also
+            // covers hyos_spawner, which may exec before app_process.
+            auto &abi_manager = monitor_.get_abi_manager();
+            if (!abi_manager.ensure_daemon_running()) {
+                break;
+            }
+
+            const size_t slash = program.find_last_of('/');
+            const std::string process_name =
+                slash == std::string::npos ? program : program.substr(slash + 1);
+            if (!zygiskd::CheckZnTarget(process_name, program)) {
+                break;
+            }
+
+            const char *native_tracer = abi_manager.get_tracer_path();
+            LOGI("Native ZN manifest matched %s (PID %d), handing off exec bootstrap",
+                 program.c_str(), pid);
+
+            kill(pid, SIGSTOP);
+            ptrace(PTRACE_CONT, pid, 0, 0);
+            const pid_t waited = waitpid(pid, &status, __WALL);
+            if (waited == pid && stopped_with(status, SIGSTOP, 0)) {
+                if (ptrace(PTRACE_DETACH, pid, 0, SIGSTOP) == -1) {
+                    PLOGE("detach Native ZN target %d", pid);
+                    break;
+                }
+
+                const auto child = fork_dont_care();
+                if (child == 0) {
+                    const std::string target_pid = std::to_string(pid);
+                    execl(native_tracer, basename(native_tracer), "trace-zn",
+                          target_pid.c_str(), nullptr);
+                    PLOGE("execute Native ZN injector for PID %d", pid);
+                    // A missing or broken injector must not block the app.
+                    kill(pid, SIGCONT);
+                    _exit(1);
+                }
+                if (child == -1) {
+                    PLOGE("fork Native ZN injector for PID %d", pid);
+                    kill(pid, SIGCONT);
+                    break;
+                }
+
+                handled = true;
+                break;
+            }
+
+            if (waited == -1) PLOGE("waitpid Native ZN target %d", pid);
+            else LOGW("Native ZN target %d did not enter SIGSTOP: %s", pid,
+                      parse_status(status).c_str());
+            ptrace(PTRACE_DETACH, pid, 0, SIGCONT);
+            break;
         }
 
         const char *tracer = monitor_.get_abi_manager().check_and_prepare_injection();

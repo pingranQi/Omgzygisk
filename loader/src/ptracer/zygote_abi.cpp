@@ -18,6 +18,12 @@ ZygoteAbiManager::ZygoteAbiManager(AppMonitor& monitor, bool is_64bit)
 
 const Status& ZygoteAbiManager::get_status() const { return status_; }
 
+bool ZygoteAbiManager::ensure_daemon_running() {
+    // Native ZN exec discovery may start/restart zygiskd independently of
+    // the Zygote generation. Do not erase the prior Zygote health signal.
+    return ensure_daemon_created(false);
+}
+
 void ZygoteAbiManager::notify_injected() {
     status_.zygote_injected = true;
     // A successful injection is proof that the *previous* zygote generation
@@ -74,7 +80,7 @@ bool ZygoteAbiManager::is_in_crash_loop() {
     return false;
 }
 
-bool ZygoteAbiManager::ensure_daemon_created() {
+bool ZygoteAbiManager::ensure_daemon_created(bool reset_zygote_state) {
     // Only clear the injection flag when starting a brand-new zygote
     // generation (i.e. first time, or after the daemon died and is being
     // re-created). Clearing it unconditionally on every call previously
@@ -83,7 +89,9 @@ bool ZygoteAbiManager::ensure_daemon_created() {
     // it before `is_in_crash_loop` could see it, so the crash counter
     // never incremented even during a real crash loop.
     if (status_.daemon_pid == -1) {
-        status_.zygote_injected = false;
+        if (reset_zygote_state) {
+            status_.zygote_injected = false;
+        }
         auto pid = fork();
         if (pid < 0) {
             PLOGE("create daemon (abi=%s)", abi_name_);
@@ -114,7 +122,7 @@ const char* ZygoteAbiManager::check_and_prepare_injection() {
         monitor_.request_stop("zygote crashed");
         return nullptr;
     }
-    if (!ensure_daemon_created()) {
+    if (!ensure_daemon_created(true)) {
         monitor_.request_stop("daemon not running");
         return nullptr;
     }

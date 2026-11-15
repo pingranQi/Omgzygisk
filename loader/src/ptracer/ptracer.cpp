@@ -50,8 +50,10 @@
  * @param lib_path The absolute path to the shared library to be injected.
  * @return True on successful injection, false otherwise.
  */
-bool inject_on_main(int pid, const char *lib_path) {
-    LOGI("starting library injection for PID: %d, library: %s", pid, lib_path);
+bool inject_on_main(int pid, const char *lib_path, const char *entry_symbol) {
+    if (!entry_symbol || !entry_symbol[0]) entry_symbol = "entry";
+    LOGI("starting library injection for PID: %d, library: %s, symbol: %s",
+         pid, lib_path, entry_symbol);
 
     // Backup of the target's registers, to be restored before detaching.
     struct user_regs_struct regs{}, backup{};
@@ -262,13 +264,13 @@ bool inject_on_main(int pid, const char *lib_path) {
         LOGI("successfully loaded library via remote dlopen, handle: 0x%" PRIxPTR,
              remote_handle);
 
-        LOGV("executing remote call to dlsym to find the 'entry' symbol");
+        LOGV("executing remote call to dlsym to find the '%s' symbol", entry_symbol);
         auto dlsym_addr = find_func_addr(local_map, map, "libdl.so", "dlsym");
         if (dlsym_addr == nullptr) {
             return abort_injection("could not find address of dlsym in the target process");
         }
         args.clear();
-        auto remote_entry_str = push_string(pid, regs, "entry");
+        auto remote_entry_str = push_string(pid, regs, entry_symbol);
         args.push_back(remote_handle);
         args.push_back((long) remote_entry_str);
         bool dlsym_call_succeeded = false;
@@ -276,8 +278,7 @@ bool inject_on_main(int pid, const char *lib_path) {
                                      (uintptr_t) libc_return_addr, args,
                                      &dlsym_call_succeeded);
         if (!dlsym_call_succeeded || injector_entry == 0) {
-            return abort_injection(
-                "dlsym failed to find the 'entry' symbol in the injected library");
+            return abort_injection("dlsym failed to find the requested entry symbol");
         }
         LOGI("found injector entry point at address 0x%" PRIxPTR, injector_entry);
 
@@ -338,7 +339,8 @@ bool inject_on_main(int pid, const char *lib_path) {
         uintptr_t rc_base = 0, rc_entry = 0;
         size_t rc_size = 0;
         if (!remote_csoloader_load_and_resolve_entry(pid, regs, map, local_map, lib_path,
-                                                      &rc_base, &rc_size, &rc_entry)) {
+                                                      entry_symbol, &rc_base, &rc_size,
+                                                      &rc_entry)) {
             return abort_injection("both remote dlopen and the custom loader failed");
         }
         start_addr = (void *) rc_base;
@@ -394,12 +396,12 @@ static bool wait_for_process(int pid, int *status) {
  *
  * Shared logic between Seize and Attach methods.
  */
-static bool perform_injection(int pid) {
+static bool perform_injection(int pid, const char *entry_symbol) {
     std::string lib_path = zygiskd::GetTmpPath();
     lib_path += "/lib" LP_SELECT("", "64") "/libzygisk.so";
 
-    if (!inject_on_main(pid, lib_path.c_str())) {
-        LOGE("failed to inject library into zygote (PID: %d)", pid);
+    if (!inject_on_main(pid, lib_path.c_str(), entry_symbol)) {
+        LOGE("failed to inject %s into PID %d", entry_symbol, pid);
         return false;
     }
     return true;
@@ -439,12 +441,14 @@ static bool detach_with_gki_workaround(int pid, int detach_signal) {
 
 // --- Strategy 1: PTRACE_SEIZE (Preferred) ---
 
-static bool trace_with_seize(int pid, bool *seize_syscall_failed) {
-    LOGI("attempting trace_seize on PID %d", pid);
+static bool trace_with_seize(int pid, bool *seize_syscall_failed,
+                             const char *entry_symbol) {
+    const bool zygote_target = std::strcmp(entry_symbol, "entry") == 0;
+    const long seize_options = zygote_target ? PTRACE_O_EXITKILL : 0;
+    LOGI("attempting trace_seize on PID %d (symbol=%s)", pid, entry_symbol);
     *seize_syscall_failed = false;
 
-    // PTRACE_O_EXITKILL ensures Zygote dies if we crash, preventing a zombie state.
-    if (ptrace(PTRACE_SEIZE, pid, 0, PTRACE_O_EXITKILL) == -1) {
+    if (ptrace(PTRACE_SEIZE, pid, 0, seize_options) == -1) {
         // Only this specific failure is a real "PTRACE_SEIZE failed" -- every
         // other `return false` below happens after the seize already
         // succeeded, so errno at that point belongs to some unrelated later
@@ -456,16 +460,20 @@ static bool trace_with_seize(int pid, bool *seize_syscall_failed) {
     int status;
 // Helper macro for local flow control
 #define BAIL_AND_DETACH                                                                            \
-    ptrace(PTRACE_DETACH, pid, 0, 0);                                                              \
+    ptrace(PTRACE_DETACH, pid, 0, zygote_target ? 0 : SIGCONT);                                     \
     return false;
 
-    // Wait for the initial Seize stop
-    if (!wait_for_process(pid, &status)) return false;
+    // Wait for the initial Seize stop. If waitpid fails after PTRACE_SEIZE,
+    // do not leave an optional Native ZN target traced or stopped.
+    if (!wait_for_process(pid, &status)) {
+        ptrace(PTRACE_DETACH, pid, 0, zygote_target ? 0 : SIGCONT);
+        return false;
+    }
 
     // SEIZE usually stops with SIGSTOP + PTRACE_EVENT_STOP
     if (STOPPED_WITH(SIGSTOP, PTRACE_EVENT_STOP)) {
         // 1. Inject Payload
-        if (!perform_injection(pid)) {
+        if (!perform_injection(pid, entry_symbol)) {
             BAIL_AND_DETACH
         }
 
@@ -482,14 +490,20 @@ static bool trace_with_seize(int pid, bool *seize_syscall_failed) {
             PLOGE("ptrace(PTRACE_CONT) failed");
             BAIL_AND_DETACH
         }
-        if (!wait_for_process(pid, &status)) return false;
+        if (!wait_for_process(pid, &status)) {
+            ptrace(PTRACE_DETACH, pid, 0, zygote_target ? 0 : SIGCONT);
+            return false;
+        }
 
         // 4. Expect SIGTRAP (caused by the signal interruption in Seize mode)
         if (STOPPED_WITH(SIGTRAP, PTRACE_EVENT_STOP)) {
             if (ptrace(PTRACE_CONT, pid, 0, 0) == -1) {
                 BAIL_AND_DETACH
             }
-            if (!wait_for_process(pid, &status)) return false;
+            if (!wait_for_process(pid, &status)) {
+                ptrace(PTRACE_DETACH, pid, 0, zygote_target ? 0 : SIGCONT);
+                return false;
+            }
 
             // 5. Expect the actual SIGCONT delivery
             if (STOPPED_WITH(SIGCONT, 0)) {
@@ -515,8 +529,9 @@ static bool trace_with_seize(int pid, bool *seize_syscall_failed) {
 
 // --- Strategy 2: PTRACE_ATTACH (Fallback) ---
 
-static bool trace_with_attach(int pid) {
-    LOGI("falling back to trace_attach on PID %d", pid);
+static bool trace_with_attach(int pid, const char *entry_symbol) {
+    const bool zygote_target = std::strcmp(entry_symbol, "entry") == 0;
+    LOGI("falling back to trace_attach on PID %d (symbol=%s)", pid, entry_symbol);
 
     // Classic attach. This sends SIGSTOP to the process immediately.
     if (ptrace(PTRACE_ATTACH, pid, 0, 0) == -1) {
@@ -526,20 +541,20 @@ static bool trace_with_attach(int pid) {
 
     int status;
     if (!wait_for_process(pid, &status)) {
-        // If wait fails, we must try to detach or the process hangs forever
-        ptrace(PTRACE_DETACH, pid, 0, 0);
+        // If wait fails, detach and resume optional Native ZN targets.
+        ptrace(PTRACE_DETACH, pid, 0, zygote_target ? 0 : SIGCONT);
         return false;
     }
 
     // Classic ATTACH results in a STOPPED status with SIGSTOP.
     // It does NOT use PTRACE_EVENT_STOP in the status bits usually.
     if (WIFSTOPPED(status) && WSTOPSIG(status) == SIGSTOP) {
-        // Optional: Set EXITKILL for parity with SEIZE, though not strictly required for fallback.
-        ptrace(PTRACE_SETOPTIONS, pid, 0, PTRACE_O_EXITKILL);
+        // EXITKILL is retained for the Zygote bootstrap only. Native ZN is optional.
+        ptrace(PTRACE_SETOPTIONS, pid, 0, zygote_target ? PTRACE_O_EXITKILL : 0);
 
         // 1. Inject Payload
-        if (!perform_injection(pid)) {
-            ptrace(PTRACE_DETACH, pid, 0, 0);
+        if (!perform_injection(pid, entry_symbol)) {
+            ptrace(PTRACE_DETACH, pid, 0, zygote_target ? 0 : SIGCONT);
             return false;
         }
 
@@ -553,7 +568,7 @@ static bool trace_with_attach(int pid) {
 
     } else {
         LOGE("attach succeeded but process state unexpected: %s", parse_status(status).c_str());
-        ptrace(PTRACE_DETACH, pid, 0, 0);
+        ptrace(PTRACE_DETACH, pid, 0, zygote_target ? 0 : SIGCONT);
         return false;
     }
 }
@@ -567,40 +582,40 @@ static bool trace_with_attach(int pid) {
  * @param pid The Zygote process ID.
  * @return True on success, false on failure.
  */
-bool trace_zygote(int pid) {
-    LOGI("attaching to zygote (PID: %d) to begin injection", pid);
+static bool trace_with_entry_symbol(int pid, const char *entry_symbol,
+                                       const char *target_description) {
+    LOGI("attaching to %s (PID: %d) to begin injection", target_description, pid);
 
-    // 1. Try SEIZE (Modern, robust handling of group stops)
     bool seize_syscall_failed = false;
-    if (trace_with_seize(pid, &seize_syscall_failed)) {
-        LOGI("successfully detached from zygote (via SEIZE), OnyxZygisk active");
+    if (trace_with_seize(pid, &seize_syscall_failed, entry_symbol)) {
+        LOGI("successfully detached from %s (via SEIZE)", target_description);
         return true;
     }
-    int seize_errno = errno;
+    const int seize_errno = errno;
 
     if (!seize_syscall_failed) {
-        // The seize itself succeeded; injection failed for some other reason
-        // (already logged by inject_on_main/abort_injection). Falling back to
-        // PTRACE_ATTACH would just hit the identical failure again.
+        // The seize itself succeeded; injection failed for another reason.
         return false;
     }
 
-    // 2. Check for fallback condition
-    // PTRACE_SEIZE returns EIO if the process state prohibits seizing,
-    // or sometimes if security modules interfere.
     if (seize_errno == EIO) {
-        LOGW("PTRACE_SEIZE failed with EIO, attempting fallback to PTRACE_ATTACH");
-
-        if (trace_with_attach(pid)) {
-            LOGI("successfully detached from zygote (via ATTACH), OnyxZygisk active");
+        LOGW("PTRACE_SEIZE returned EIO; attempting PTRACE_ATTACH for %s",
+             target_description);
+        if (trace_with_attach(pid, entry_symbol)) {
+            LOGI("successfully detached from %s (via ATTACH)", target_description);
             return true;
         }
     } else {
-        // If it wasn't EIO (e.g., EPERM, ESRCH), Attach will likely fail too,
-        // or the error is fatal.
         errno = seize_errno;
-        PLOGE("PTRACE_SEIZE failed (errno: %d)", seize_errno);
+        PLOGE("PTRACE_SEIZE failed for %s (errno: %d)", target_description, seize_errno);
     }
-
     return false;
+}
+
+bool trace_zygote(int pid) {
+    return trace_with_entry_symbol(pid, "entry", "zygote");
+}
+
+bool trace_zn(int pid) {
+    return trace_with_entry_symbol(pid, "zn_entry", "Native ZN target");
 }

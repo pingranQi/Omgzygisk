@@ -39,8 +39,8 @@ list(APPEND INJECTOR_SRC_LIST
     ${CMAKE_CURRENT_SOURCE_DIR}/injector/ptrace_clear.cpp)
 add_library(zygisk SHARED ${INJECTOR_SRC_LIST})
 target_compile_options(zygisk PRIVATE -Wno-invalid-offsetof -Wno-unused-private-field)
-target_include_directories(zygisk PRIVATE include)
-target_link_libraries(zygisk log common lsplt_static csoloader)
+target_include_directories(zygisk PRIVATE include external/dobby/include)
+target_link_libraries(zygisk log common lsplt_static csoloader dobby)
 
 aux_source_directory(ptracer PTRACER_SRC_LIST)
 add_executable(libzygisk_ptrace.so ${PTRACER_SRC_LIST})

@@ -146,6 +146,71 @@ int GetFnModuleDir(const std::string &id) {
     return socket_utils::recv_fd(fd);
 }
 
+bool CheckZnTarget(const std::string &process_name, const std::string &process_path) {
+    // The monitor may start the daemon at this first Native ZN lookup.
+    UniqueFd fd = Connect(5);
+    if (fd == -1) {
+        PLOGE("CheckZnTarget");
+        return false;
+    }
+    socket_utils::write_u8(fd, (uint8_t) SocketAction::CheckZnTarget);
+    socket_utils::write_string(fd, process_name);
+    socket_utils::write_string(fd, process_path);
+    return socket_utils::read_u8(fd) == 1;
+}
+
+std::vector<ZnPlanEntry> GetZnPlan(const std::string &process_name,
+                                   const std::string &process_path,
+                                   uint8_t retry) {
+    std::vector<ZnPlanEntry> modules;
+    UniqueFd fd = Connect(retry);
+    if (fd == -1) {
+        PLOGE("GetZnPlan");
+        return modules;
+    }
+    socket_utils::write_u8(fd, (uint8_t) SocketAction::GetZnPlan);
+    socket_utils::write_string(fd, process_name);
+    socket_utils::write_string(fd, process_path);
+    const size_t count = socket_utils::read_usize(fd);
+    if (count > 128) {
+        LOGE("GetZnPlan: daemon returned an invalid module count: %zu", count);
+        return modules;
+    }
+    for (size_t i = 0; i < count; ++i) {
+        std::string path = socket_utils::read_string(fd);
+        const bool companion = socket_utils::read_u8(fd) != 0;
+        const int module_fd = socket_utils::recv_fd(fd);
+        if (module_fd < 0) {
+            LOGE("GetZnPlan: failed to receive library FD for %s", path.c_str());
+            continue;
+        }
+        modules.emplace_back(std::move(path), companion, module_fd);
+    }
+    return modules;
+}
+
+int ConnectZnCompanion(const std::string &library_path) {
+    int fd = Connect(1);
+    if (fd == -1) {
+        PLOGE("ConnectZnCompanion");
+        return -1;
+    }
+    socket_utils::write_u8(fd, (uint8_t) SocketAction::RequestZnCompanionSocket);
+    socket_utils::write_string(fd, library_path);
+    if (socket_utils::read_u8(fd) == 1) return fd;
+    close(fd);
+    return -1;
+}
+
+void ReportZnModule(const std::string &library_path, bool injected) {
+    UniqueFd fd = Connect(1);
+    if (fd == -1) return;
+    socket_utils::write_u8(fd, (uint8_t) SocketAction::ReportZnModule);
+    socket_utils::write_string(fd, library_path);
+    socket_utils::write_u8(fd, injected ? 1 : 0);
+    (void) socket_utils::read_u8(fd);
+}
+
 int ConnectCompanion(size_t index) {
     int fd = Connect(1);
     if (fd == -1) {
