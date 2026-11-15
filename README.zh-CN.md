@@ -146,5 +146,3 @@ OmgZygisk 使用或基于以下开源项目构建：
 ## 许可证
 
 OmgZygisk 使用 [GNU Affero General Public License v3.0](LICENSE) 发布。仓库包含采用各自许可证的上游代码与第三方组件；相关版权和许可证声明均予以保留，详见 [NOTICE.md](NOTICE.md) 及各组件目录。
-
-为兼容现有安装，部分内部模块标识符和设备数据目录仍可能使用 `onyxzygisk` 标识。
