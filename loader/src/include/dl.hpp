@@ -1,5 +1,4 @@
 #pragma once
 
-#include <dlfcn.h>
-
-void *DlopenMem(int memfd, int flags);
+/* C-compatible declaration; keep this header for existing C++ call sites. */
+#include "dl.h"
