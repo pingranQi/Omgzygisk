@@ -52,11 +52,6 @@ bool loadEntry(zygiskd::ZnPlanEntry &entry, size_t &system_loaded) {
         return false;
     }
 
-    // Pin shared custom-linker TLS before entering module code. The ZN DSO
-    // remains resident for this process lifetime.
-    if (loaded.custom) RetainCustomLoaderForProcessLifetime();
-    else ++system_loaded;
-
     auto *module = reinterpret_cast<ZygiskNextModule *>(loaded.entry);
     if (!module || !module->onModuleLoaded || module->target_api_version < 3 ||
         module->target_api_version > ZYGISK_NEXT_API_VERSION) {
@@ -65,6 +60,11 @@ bool loadEntry(zygiskd::ZnPlanEntry &entry, size_t &system_loaded) {
         zygiskd::ReportZnModule(entry.lib_path, false);
         return false;
     }
+
+    // Pin shared custom-linker TLS only after the module ABI is accepted.
+    // The DSO is intentionally resident for this process lifetime.
+    if (loaded.custom) RetainCustomLoaderForProcessLifetime();
+    else ++system_loaded;
 
     auto *self = new ZnModuleHandle();
     self->lib_path = entry.lib_path;
