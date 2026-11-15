@@ -181,7 +181,7 @@ bool revert_root_traces_here(uint32_t info_flags) {
     for (const auto& trace : traces) {
         LOGV("detaching %s (mnt_id: %u)", trace.target.c_str(), trace.id);
         if (umount2(trace.target.c_str(), MNT_DETACH) != 0) {
-            PLOGW("failed to detach %s", trace.target.c_str());
+            PLOGE("umount2(%s)", trace.target.c_str());
             complete = false;
         }
     }
@@ -210,4 +210,3 @@ bool refresh_mount_line() {
     return true;
 }
 
-}
