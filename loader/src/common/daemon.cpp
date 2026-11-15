@@ -147,7 +147,8 @@ int GetFnModuleDir(const std::string &id) {
 }
 
 bool CheckZnTarget(const std::string &process_name, const std::string &process_path) {
-    UniqueFd fd = Connect(1);
+    // The monitor may start the daemon at this first Native ZN lookup.
+    UniqueFd fd = Connect(5);
     if (fd == -1) {
         PLOGE("CheckZnTarget");
         return false;

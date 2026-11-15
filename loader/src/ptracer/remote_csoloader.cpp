@@ -687,8 +687,9 @@ static bool apply_relocations(int pid, int fd, const struct elf_dyn_info *info,
 bool remote_csoloader_load_and_resolve_entry(int pid, struct user_regs_struct &regs,
                                              const std::vector<MapInfo> &remote_map,
                                              const std::vector<MapInfo> &local_map,
-                                             const char *lib_path, uintptr_t *out_base,
-                                             size_t *out_total_size, uintptr_t *out_entry) {
+                                             const char *lib_path, const char *entry_symbol,
+                                             uintptr_t *out_base, size_t *out_total_size,
+                                             uintptr_t *out_entry) {
     struct user_regs_struct regs_saved = regs;
 
     long page_size_long = sysconf(_SC_PAGESIZE);
@@ -1061,8 +1062,9 @@ bool remote_csoloader_load_and_resolve_entry(int pid, struct user_regs_struct &r
     }
 
     ElfW(Addr) entry_value = 0;
-    if (!find_dynsym_value(fd, &dinfo, "entry", &entry_value)) {
-        LOGE("failed to resolve `entry` from the ELF dynsym");
+    if (!entry_symbol || !entry_symbol[0]) entry_symbol = "entry";
+    if (!find_dynsym_value(fd, &dinfo, entry_symbol, &entry_value)) {
+        LOGE("failed to resolve `%s` from the ELF dynsym", entry_symbol);
         args[0] = (long) remote_base;
         args[1] = (long) map_size;
         remote_syscall(pid, regs, syscall_gadget, __NR_munmap, args, 2);

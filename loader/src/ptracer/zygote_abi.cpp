@@ -18,6 +18,10 @@ ZygoteAbiManager::ZygoteAbiManager(AppMonitor& monitor, bool is_64bit)
 
 const Status& ZygoteAbiManager::get_status() const { return status_; }
 
+bool ZygoteAbiManager::ensure_daemon_running() {
+    return ensure_daemon_created();
+}
+
 void ZygoteAbiManager::notify_injected() {
     status_.zygote_injected = true;
     // A successful injection is proof that the *previous* zygote generation

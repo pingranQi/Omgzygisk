@@ -27,6 +27,8 @@ public:
     // Public Interface for event handling
     bool handle_daemon_exit_if_match(int pid, int process_status);
     const char* check_and_prepare_injection();
+    bool ensure_daemon_running();
+    const char* get_tracer_path() const { return tracer_path_; }
 
     // Public methods for state modification
     const Status& get_status() const;

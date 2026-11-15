@@ -73,7 +73,7 @@ void send_control_command(Command cmd) {
 
 static void print_usage(const char *tool_name);
 static int handle_monitor();
-static int handle_trace(int argc, char **argv);
+static int handle_trace(int argc, char **argv, bool native_zn = false);
 static int handle_ctl(int argc, char **argv);
 static int handle_version();
 
@@ -98,7 +98,9 @@ int main(int argc, char **argv) {
     if (command == "monitor"sv) {
         return handle_monitor();
     } else if (command == "trace"sv) {
-        return handle_trace(argc, argv);
+        return handle_trace(argc, argv, false);
+    } else if (command == "trace-zn"sv) {
+        return handle_trace(argc, argv, true);
     } else if (command == "ctl"sv) {
         return handle_ctl(argc, argv);
     } else if (command == "version"sv) {
@@ -118,7 +120,7 @@ int main(int argc, char **argv) {
 static void print_usage(const char *tool_name) {
     fprintf(stderr, "OnyxZygisk Tracer %s\n", ZKSU_VERSION);
     fprintf(stderr,
-            "usage: %s monitor | trace <pid> [--restart] | ctl <start|stop|exit> | version\n",
+            "usage: %s monitor | trace <pid> [--restart] | trace-zn <pid> | ctl <start|stop|exit> | version\n",
             tool_name);
 }
 
@@ -139,7 +141,7 @@ static int handle_monitor() {
  *
  * Parses the PID and optional flags, then initiates the ptrace injection.
  */
-static int handle_trace(int argc, char **argv) {
+static int handle_trace(int argc, char **argv, bool native_zn) {
     if (argc < 3) {
         fprintf(stderr, "error: trace command requires a PID\n");
         print_usage(argv[0]);
@@ -159,17 +161,24 @@ static int handle_trace(int argc, char **argv) {
     pid_t pid = static_cast<pid_t>(pid_val);
     printf("preparing to trace PID: %d\n", pid);
 
-    // Handle optional --restart flag.
-    if (argc >= 4 && argv[3] == "--restart"sv) {
+    if (!native_zn && argc >= 4 && argv[3] == "--restart"sv) {
         printf("zygote restart requested...\n");
         zygiskd::ZygoteRestart();
     }
 
-    if (!trace_zygote(pid)) {
-        fprintf(stderr,
-                "error: failed to trace zygote, killing process %d to prevent system instability\n",
-                pid);
-        kill(pid, SIGKILL);
+    const bool injected = native_zn ? trace_zn(pid) : trace_zygote(pid);
+    if (!injected) {
+        if (native_zn) {
+            // Native ZN is optional: a failed module bootstrap must not prevent
+            // the target executable from starting.
+            fprintf(stderr, "warning: Native ZN bootstrap failed for PID %d; resuming target\n", pid);
+            kill(pid, SIGCONT);
+        } else {
+            fprintf(stderr,
+                    "error: failed to trace zygote, killing process %d to prevent system instability\n",
+                    pid);
+            kill(pid, SIGKILL);
+        }
         return EXIT_FAILURE;
     }
 
