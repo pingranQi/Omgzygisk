@@ -164,5 +164,3 @@ OmgZygisk uses and builds on open-source work, including:
 ## License
 
 OmgZygisk is distributed under the [GNU Affero General Public License v3.0](LICENSE). The repository includes code from upstream projects and third-party components under their respective licenses. Their required copyright and license notices are retained; see [NOTICE.md](NOTICE.md) and the relevant component directories.
-
-The repository's branding is OmgZygisk. For compatibility with existing installations, some internal module identifiers and on-device data paths may still use the `onyxzygisk` identifier.
