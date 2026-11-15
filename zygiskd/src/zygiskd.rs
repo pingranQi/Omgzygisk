@@ -1727,7 +1727,22 @@ fn spawn_zn_companion(library_path: &Path) -> Result<Option<UnixStream>> {
         });
     }
 
-    let _child = command.spawn().context("failed to spawn Native ZN companion")?;
+    let mut child = command.spawn().context("failed to spawn Native ZN companion")?;
+    let child_pid = child.id();
+    // Keep a waiter for the full companion lifetime. Dropping std::process::Child
+    // does not reap it, so a long-running daemon would otherwise accumulate
+    // zombies after Native ZN companions exit.
+    thread::spawn(move || match child.wait() {
+        Ok(status) if status.success() => {
+            debug!("Native ZN companion {} exited normally", child_pid);
+        }
+        Ok(status) => {
+            warn!("Native ZN companion {} exited with {}", child_pid, status);
+        }
+        Err(error) => {
+            warn!("Failed to reap Native ZN companion {}: {}", child_pid, error);
+        }
+    });
     drop(companion_sock);
     match daemon_sock.read_u8()? {
         0 => Ok(None),
