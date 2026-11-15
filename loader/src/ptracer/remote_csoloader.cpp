@@ -71,6 +71,70 @@ static long remote_mmap_offset_arg(off_t file_offset, size_t page_size) {
 #endif
 }
 
+ // Return the center of a large, guarded gap between the tracee's VMAs.
+ // Prefer the upper third of the observed span, then relax to any gap above 4 GiB.
+ // This is only an mmap hint: the kernel remains responsible for collision checks.
+ static uintptr_t find_high_gap_hint(const std::vector<MapInfo> &maps,
+                                     size_t length, size_t page_size) {
+     constexpr uintptr_t kHighFloor = 0x100000000ULL;
+     constexpr uintptr_t kGuard = 16ULL * 1024ULL * 1024ULL;
+     if (maps.size() < 2 || length == 0 || page_size == 0 ||
+         length > UINTPTR_MAX - 2 * kGuard)
+         return 0;
+ 
+     const uintptr_t low = maps.front().start;
+     const uintptr_t high = maps.back().end;
+     if (high <= low)
+         return 0;
+     const uintptr_t span = high - low;
+     const uintptr_t upper_cutoff = low + (span - span / 3);
+ 
+     for (int pass = 0; pass < 2; ++pass) {
+         uintptr_t best = 0;
+         uintptr_t best_clearance = 0;
+         for (size_t i = 1; i < maps.size(); ++i) {
+             const uintptr_t left = maps[i - 1].end;
+             const uintptr_t right = maps[i].start;
+             if (right <= left || left < kHighFloor ||
+                 right - left < length + 2 * kGuard)
+                 continue;
+ 
+             const uintptr_t usable_begin = left + kGuard;
+             const uintptr_t usable_end = right - kGuard;
+             if (usable_end < usable_begin || usable_end - usable_begin < length)
+                 continue;
+ 
+             uintptr_t candidate =
+                 usable_begin + (usable_end - usable_begin - length) / 2;
+             const uintptr_t remainder = candidate % page_size;
+             if (remainder != 0) {
+                 const uintptr_t adjustment = page_size - remainder;
+                 if (candidate > UINTPTR_MAX - adjustment)
+                     continue;
+                 candidate += adjustment;
+             }
+             if (candidate > usable_end || length > usable_end - candidate)
+                 continue;
+             if (pass == 0 && candidate < upper_cutoff)
+                 continue;
+ 
+             const uintptr_t left_clearance = candidate - left;
+             const uintptr_t right_clearance = right - (candidate + length);
+             const uintptr_t clearance =
+                 left_clearance < right_clearance ? left_clearance : right_clearance;
+             if (clearance > best_clearance ||
+                 (clearance == best_clearance && candidate > best)) {
+                 best = candidate;
+                 best_clearance = clearance;
+             }
+         }
+         if (best != 0)
+             return best;
+     }
+     return 0;
+ }
+
+
 // --- ELF layout / dynamic parsing --------------------------------------------
 
 // Parse the ELF header + program headers and compute the total span of all
@@ -697,38 +761,60 @@ bool remote_csoloader_load_and_resolve_entry(int pid, struct user_regs_struct &r
         }
     }
 
-    // Reserve the whole mapping span. On LP64 request a high (4 GiB+) base so it
-    // stays clear of where the target later grows its own VMAs.
-    uintptr_t min_addr = sizeof(void *) == 8 ? 0x100000000ULL : (uintptr_t) 0;
-    args[0] = (long) min_addr;
-    args[1] = (long) map_size;
-    args[2] = PROT_NONE;
-    args[3] = MAP_PRIVATE | MAP_ANONYMOUS;
-    args[4] = -1;
-    args[5] = 0;
-    uintptr_t remote_base = (uintptr_t) remote_syscall(pid, regs, syscall_gadget, SYS_MMAP, args, 6);
-    if (!remote_base || remote_base == (uintptr_t) MAP_FAILED) {
-        LOGE("remote mmap reserve failed: %p", (void *) remote_base);
+    // Prefer a guarded high-address hole between the tracee's existing VMAs.
+    // mmap() receives a normal hint (never MAP_FIXED), so the kernel owns
+    // collision checking and cannot replace an unrelated mapping.
+    constexpr uintptr_t kHighAddressFloor = 0x100000000ULL;
+    auto release_remote_mapping = [&](uintptr_t address) {
+        args[0] = static_cast<long>(address);
+        args[1] = static_cast<long>(map_size);
+        const long result =
+            remote_syscall(pid, regs, syscall_gadget, __NR_munmap, args, 2);
+        if (result < 0)
+            LOGE("remote munmap of rejected reservation %p failed: %ld",
+                 reinterpret_cast<void *>(address), result);
+    };
+    auto reserve_remote_mapping = [&](uintptr_t hint) -> uintptr_t {
+        args[0] = static_cast<long>(hint);
+        args[1] = static_cast<long>(map_size);
+        args[2] = PROT_NONE;
+        args[3] = MAP_PRIVATE | MAP_ANONYMOUS;
+        args[4] = -1;
+        args[5] = 0;
+        const long result =
+            remote_syscall(pid, regs, syscall_gadget, SYS_MMAP, args, 6);
+        if (result < 0)
+            return 0;
+        const uintptr_t address = static_cast<uintptr_t>(result);
+        if (address != hint) {
+            release_remote_mapping(address);
+            return 0;
+        }
+        return address;
+    };
+
+    const uintptr_t preferred_hint =
+        find_high_gap_hint(remote_map, map_size, page_size);
+    uintptr_t remote_base =
+        preferred_hint ? reserve_remote_mapping(preferred_hint) : 0;
+    if (remote_base == 0) {
+        // Compatibility fallback: preserve the old 4 GiB floor, while still
+        // requiring the kernel to honor the hint exactly.
+        remote_base = reserve_remote_mapping(kHighAddressFloor);
+    }
+    if (remote_base == 0) {
+        LOGE("remote mmap reserve failed (high-gap hint=%p)",
+             reinterpret_cast<void *>(preferred_hint));
         args[0] = remote_fd;
         remote_syscall(pid, regs, syscall_gadget, __NR_close, args, 1);
         free(phdr);
         close(fd);
         return false;
     }
-#ifdef __LP64__
-    if (remote_base < min_addr) {
-        LOGE("remote mmap reserve returned a low base %p (< %p)", (void *) remote_base,
-             (void *) min_addr);
-        args[0] = (long) remote_base;
-        args[1] = (long) map_size;
-        remote_syscall(pid, regs, syscall_gadget, __NR_munmap, args, 2);
-        args[0] = remote_fd;
-        remote_syscall(pid, regs, syscall_gadget, __NR_close, args, 1);
-        free(phdr);
-        close(fd);
-        return false;
-    }
-#endif
+    LOGI("remote mmap reservation placed at %p (size=%zu, hint=%p)",
+         reinterpret_cast<void *>(remote_base), map_size,
+         reinterpret_cast<void *>(preferred_hint ? preferred_hint
+                                                 : kHighAddressFloor));
 
     uintptr_t load_bias = remote_base - (uintptr_t) min_vaddr;
 

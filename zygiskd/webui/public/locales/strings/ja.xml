@@ -90,4 +90,11 @@
 	<string name="settings_about_section">このモジュールについて</string>
 	<string name="settings_authors">作者</string>
 	<string name="settings_about_text">FN（Functional Node）モジュールに対応する ARM64 専用の ptrace ベース Zygisk 実装です。NeoZygisk のフォークです。</string>
+	<string name="status_memory_api_section">メモリとネイティブ API</string>
+	<string name="status_memory_policy">メモリ配置</string>
+	<string name="status_memory_policy_value">高位 VMA の空き領域を優先</string>
+	<string name="status_memory_policy_desc">既存 VMA から距離のある十分な高位アドレスの空き領域を要求します。カーネルがヒントを検証し、利用できない場合は安全にフォールバックします。</string>
+	<string name="status_zn_api">Native ZN API</string>
+	<string name="status_zn_api_unavailable">未実装</string>
+	<string name="status_zn_api_desc">Native ZN モジュールには exec 時のブートストラップと独立したネイティブプロセスのライフサイクル管理が必要です。このビルドは Zygisk API と FN を提供し、Native ZN には対応していません。</string>
 </resources>

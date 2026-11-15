@@ -90,4 +90,11 @@
 	<string name="settings_about_section">About</string>
 	<string name="settings_authors">Authors</string>
 	<string name="settings_about_text">An ARM64-only ptrace Zygisk implementation with FN (Functional Node) modules. A fork of NeoZygisk.</string>
+	<string name="status_memory_api_section">Memory and native API</string>
+	<string name="status_memory_policy">Memory placement</string>
+	<string name="status_memory_policy_value">High-address VMA gap preferred</string>
+	<string name="status_memory_policy_desc">A guarded high-address gap between existing VMAs is requested. The kernel validates the hint; safe fallback is used when unavailable.</string>
+	<string name="status_zn_api">Native ZN API</string>
+	<string name="status_zn_api_unavailable">Not implemented</string>
+	<string name="status_zn_api_desc">Native ZN modules require an exec-time bootstrap and a separate native-process lifecycle. This build provides Zygisk API and FN, not Native ZN.</string>
 </resources>
