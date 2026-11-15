@@ -3,6 +3,7 @@
 #include <android/dlext.h>
 #include <dlfcn.h>
 #include <fcntl.h>
+#include <sched.h>
 #include <sys/mman.h>
 #include <sys/mount.h>
 #include <sys/stat.h>
@@ -402,6 +403,15 @@ void ZygiskContext::run_modules_post() {
     }
 }
 
+static bool is_zygote_process_name(const char* name) {
+    if (name == nullptr) return false;
+    constexpr char suffix[] = "_zygote";
+    constexpr size_t suffix_length = sizeof(suffix) - 1;
+    const size_t name_length = strlen(name);
+    return name_length > suffix_length &&
+           strcmp(name + name_length - suffix_length, suffix) == 0;
+}
+
 void ZygiskContext::app_specialize_pre() {
     uid_t uid = args.app->uid;
     bool is_isolated_aid = uid >= AID_ISOLATED_START && uid <= AID_ISOLATED_END;
@@ -429,17 +439,71 @@ void ZygiskContext::app_specialize_pre() {
 
     if (!skip_zygiskd && info_flags == 0) info_flags = zygiskd::GetProcessFlags(uid);
 
-    if ((info_flags & UNMOUNT_MASK) == UNMOUNT_MASK) {
+    const bool on_denylist = (info_flags & UNMOUNT_MASK) == UNMOUNT_MASK;
+    const bool privileged = (info_flags & (PROCESS_IS_MANAGER | PROCESS_GRANTED_ROOT)) != 0;
+    const bool is_webview_zygote = process != nullptr && strcmp(process, "webview_zygote") == 0;
+    const bool is_app_zygote = is_zygote_process_name(process);
+
+    if (on_denylist) {
         LOGI("[%s] is on the denylist", process);
         flags |= DO_REVERT_UNMOUNT;
     }
 
+    // Revert-only is per application: fork first, then detach mounts from a
+    // private copy owned by this app. Zygote itself and trusted siblings keep
+    // the original mount tree.
+    const bool should_isolate_mounts = (on_denylist && !privileged) || is_webview_zygote;
+    if (!skip_zygiskd && should_isolate_mounts && !(info_flags & MOUNT_MODE_GLOBAL)) {
+        flags |= DO_REVERT_UNMOUNT;
+
+        // App zygotes (including webview_zygote) outlive the specialization
+        // call and serve as parents for later processes. Never mutate their
+        // mount tree in place; use the daemon-held clean namespace instead.
+        if (is_app_zygote) {
+            // App zygotes outlive specialization and parent future processes.
+            if (!update_mount_namespace(zygiskd::MountNamespace::Clean)) {
+                LOGE("failed to switch [%s] into the cached clean mount namespace", process);
+            }
+        } else if (!(info_flags & MOUNT_MODE_SETNS)) {
+            // Revert-only owns its private mount tree. Namespace Switch keeps
+            // its existing unshare-hook timing below.
+            if (unshare(CLONE_NEWNS) != 0) {
+                PLOGE("unshare(CLONE_NEWNS) for [%s]", process);
+                if (!update_mount_namespace(zygiskd::MountNamespace::Clean)) {
+                    LOGE("failed to fall back to the cached clean mount namespace for [%s]", process);
+                }
+            } else if (!revert_root_traces_here(info_flags)) {
+                LOGW("in-place mount revert failed for [%s]; switching to the clean namespace", process);
+                if (!update_mount_namespace(zygiskd::MountNamespace::Clean)) {
+                    LOGE("failed to fall back to the cached clean mount namespace for [%s]", process);
+                }
+            }
+        }
+    }
+
     flags |= APP_SPECIALIZE;
     if (!skip_zygiskd) run_modules_pre();
+
+    // FORCE_DENYLIST_UNMOUNT may be requested by a module during preAppSpecialize.
+    // Match the fallback semantics: do this after callbacks, so the module can
+    // still perform its own mount setup before the process is moved to Clean.
+    if (!skip_zygiskd && !on_denylist && !is_webview_zygote && !privileged &&
+        (flags & DO_REVERT_UNMOUNT) &&
+        !(info_flags & (MOUNT_MODE_GLOBAL | MOUNT_MODE_SETNS))) {
+        if (!update_mount_namespace(zygiskd::MountNamespace::Clean)) {
+            LOGW("module-requested mount revert could not switch [%s] into Clean", process);
+        }
+    }
 }
 
 void ZygiskContext::app_specialize_post() {
     run_modules_post();
+
+    if (flags & DO_REVERT_UNMOUNT) {
+        if (!refresh_mount_line()) {
+            LOGW("failed to refresh bionic's cached mount table for [%s]", process);
+        }
+    }
 
     if ((info_flags & PROCESS_IS_MANAGER) == PROCESS_IS_MANAGER) {
         LOGI("current uid %d is manager!", args.app->uid);
@@ -523,59 +587,14 @@ void ZygiskContext::nativeForkSystemServer_post() {
     fork_post();
 }
 
-bool abort_zygote_unmount(const std::vector<mount_info> &traces, uint32_t info_flags) {
-    if (traces.size() == 0) {
-        LOGV("abort unmounting zygote with an empty trace list");
-        return true;
-    }
-    bool is_magisk = info_flags & PROCESS_ROOT_IS_MAGISK;
-    for (const auto &trace : traces) {
-        if (trace.target.rfind("/product", 0) == 0) {
-            if (trace.target.rfind("/product/bin", 0) == 0) continue;
-            if (!is_magisk && trace.target != "/product") continue;
-            // workaround for zygote resource overlay (JingMatrix/NeoZygisk#26)
-            LOGV("abort unmounting zygote due to prohibited target: [%s]", trace.raw_info.c_str());
-            return true;
-        }
-    }
-    return false;
-}
-
 void ZygiskContext::nativeForkAndSpecialize_pre() {
     process = env->GetStringUTFChars(args.app->nice_name, nullptr);
     LOGV("pre forkAndSpecialize [%s]", process);
     flags |= APP_FORK_AND_SPECIALIZE;
 
-    // Direct zygote unmounting is the "revert only" mount mode only. In the
-    // "namespace switch" and "global" modes the zygote keeps its module mounts
-    // (denylisted apps are handled by setns / not at all — see the unshare
-    // hook), so this whole step is skipped.
-    if (!g_hook->zygote_unmounted && g_hook->zygote_traces.size() == 0) {
-        info_flags = zygiskd::GetProcessFlags(args.app->uid);
-
-        if (!(info_flags & (MOUNT_MODE_SETNS | MOUNT_MODE_GLOBAL))) {
-            g_hook->zygote_traces = check_zygote_traces(info_flags);
-
-            if (!abort_zygote_unmount(g_hook->zygote_traces, info_flags)) {
-                auto removal_predicate = [](const mount_info &trace) {
-                    LOGV("unmounting %s (mnt_id: %u)", trace.target.c_str(), trace.id);
-                    if (umount2(trace.target.c_str(), MNT_DETACH) == 0) {
-                        return true;  // Success: Mark for removal.
-                    } else {
-                        LOGE("failed to unmount %s: %s", trace.target.c_str(), strerror(errno));
-                        return false;  // Failure: Keep this trace in the vector.
-                    }
-                };
-
-                auto new_end = std::remove_if(g_hook->zygote_traces.begin(),
-                                              g_hook->zygote_traces.end(), removal_predicate);
-
-                g_hook->zygote_traces.erase(new_end, g_hook->zygote_traces.end());
-                g_hook->zygote_unmounted = true;
-            }
-        }
-    }
-
+    // Do not alter the zygote's mount tree here. Denylisted apps receive their
+    // own mount-namespace copy and have it reverted after the fork in
+    // app_specialize_pre().
     fork_pre();
     if (is_child()) {
         app_specialize_pre();

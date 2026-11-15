@@ -122,38 +122,28 @@ DCL_HOOK_FUNC(ssize_t, read, int fd, void *buf, size_t count) {
     return ret;
 }
 
-// Set up the app's private mount namespace according to the selected mount
-// mode (see module.hpp / zygiskd's ProcessFlags):
-//   • global        — every app keeps module mounts; do nothing here.
-//   • namespace swap — denylisted apps setns into the cached clean namespace;
-//                      trusted apps inherit the (never-unmounted) zygote.
-//   • revert only    — modules were unmounted from zygote already, so trusted
-//                      apps setns back into Root to regain them; denylisted
-//                      apps simply inherit the clean zygote (no setns).
-DCL_HOOK_FUNC(static int, unshare, int flags) {
-    if (g_ctx && (flags & CLONE_NEWNS) && !(g_ctx->flags & SERVER_FORK_AND_SPECIALIZE) &&
-        !(g_ctx->info_flags & MOUNT_MODE_GLOBAL)) {
-        bool should_unmount = !(g_ctx->info_flags & (PROCESS_IS_MANAGER | PROCESS_GRANTED_ROOT)) &&
-                              g_ctx->flags & DO_REVERT_UNMOUNT;
+// Per-app mount isolation is handled in ZygiskContext::app_specialize_pre(),
+// after fork and before module callbacks. Do not alter mount state from this
+// Zygote-side PLT hook: sibling apps must inherit the original mount tree.
 
-        if (g_ctx->info_flags & MOUNT_MODE_SETNS) {
-            // Zygote was never unmounted in this mode: only denylisted apps
-            // need switching, into the cached clean namespace.
-            if (should_unmount) {
-                ZygiskContext::update_mount_namespace(zygiskd::MountNamespace::Clean);
-            }
-        } else {
-            // Revert-only: zygote had its module mounts stripped.
-            if (!should_unmount && g_hook->zygote_unmounted) {
-                ZygiskContext::update_mount_namespace(zygiskd::MountNamespace::Root);
-            }
-            // Denylisted apps rely on inheriting the clean zygote; no setns
-            // fallback (that is what makes this "revert only").
+// Preserve the existing Namespace Switch path. Revert-only no longer
+// touches the zygote; its process-local unshare is performed in
+// app_specialize_pre() before modules are called.
+DCL_HOOK_FUNC(static int, unshare, int flags) {
+    if (g_ctx && (flags & CLONE_NEWNS) &&
+        !(g_ctx->flags & SERVER_FORK_AND_SPECIALIZE) &&
+        !(g_ctx->info_flags & MOUNT_MODE_GLOBAL) &&
+        (g_ctx->info_flags & MOUNT_MODE_SETNS)) {
+        const bool should_unmount =
+            !(g_ctx->info_flags & (PROCESS_IS_MANAGER | PROCESS_GRANTED_ROOT)) &&
+            (g_ctx->flags & DO_REVERT_UNMOUNT);
+        if (should_unmount) {
+            ZygiskContext::update_mount_namespace(zygiskd::MountNamespace::Clean);
         }
     }
 
     int res = old_unshare(flags);
-    errno = 0;  // Restore errno back to 0
+    errno = 0;
     return res;
 }
 

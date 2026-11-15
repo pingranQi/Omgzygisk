@@ -39,8 +39,8 @@ A two-layer DenyList that keeps root invisible to detection-hardened apps:
 
 | Strategy | How it works |
 | :--- | :--- |
-| **Zygote unmount** (primary) | Strips root and module mounts from zygote *before* the app process is specialised. |
-| **Namespace switch** (fallback) | Moves the forked app into a cached, completely clean mount namespace via `setns`. |
+| **Per-app mount revert** (primary) | After the fork, each denylisted app gets a private mount-tree copy; root and module mounts are detached from that copy with `MNT_DETACH`. |
+| **Namespace switch** (fallback) | If the revert is unsafe or incomplete, the app switches to the cached clean mount namespace via `setns`. App zygotes use this path directly. |
 
 No traces in `/proc/self/maps`, no leaked mount points, no stale file descriptors.
 
