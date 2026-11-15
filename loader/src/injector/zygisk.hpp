@@ -47,4 +47,5 @@ size_t sanitize_maps_in_buffer(char *buf, size_t nbytes);
 
 void send_seccomp_event_if_needed();
 
-std::vector<mount_info> check_zygote_traces(uint32_t info_flags);
+bool revert_root_traces_here(uint32_t info_flags);
+bool refresh_mount_line();
