@@ -1559,12 +1559,19 @@ fn is_elf_matching_arch(path: &Path) -> bool {
         Ok(file) => file,
         Err(_) => return false,
     };
-    let mut header = [0u8; 5];
-    if file.read_exact(&mut header).is_err() || &header[..4] != b"\x7FELF" {
+    let mut header = [0u8; 20];
+    if file.read_exact(&mut header).is_err()
+        || &header[..4] != b"\x7FELF"
+        || header[5] != 1
+    {
         return false;
     }
     let expected_class = if cfg!(target_pointer_width = "64") { 2 } else { 1 };
-    header[4] == expected_class
+    let expected_machine = if cfg!(target_arch = "aarch64") { 183u16 }
+        else if cfg!(target_arch = "arm") { 40u16 }
+        else { return false; };
+    let machine = u16::from_le_bytes([header[18], header[19]]);
+    header[4] == expected_class && machine == expected_machine
 }
 
 /// Return canonical, in-module library paths matched by the process executable.

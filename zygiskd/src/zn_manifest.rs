@@ -28,7 +28,7 @@ pub fn parse_line(line: &str) -> Option<ManifestEntry> {
         if value.is_empty() { return None; }
         Target::Name(value.to_owned())
     } else if let Some(value) = fields[0].strip_prefix("path=") {
-        if value.is_empty() { return None; }
+        if value.is_empty() || !value.starts_with('/') { return None; }
         Target::Path(value.to_owned())
     } else {
         return None;
@@ -36,9 +36,11 @@ pub fn parse_line(line: &str) -> Option<ManifestEntry> {
 
     let library = fields.last()?.to_string();
     if library.is_empty() { return None; }
-    let companion = fields[1..fields.len() - 1]
-        .iter()
-        .any(|field| *field == "companion");
+    let options = &fields[1..fields.len() - 1];
+    if options.iter().any(|field| *field != "companion") {
+        return None;
+    }
+    let companion = options.iter().any(|field| *field == "companion");
 
     Some(ManifestEntry { target, companion, library })
 }
@@ -100,5 +102,7 @@ mod tests {
         assert!(parse_line("").is_none());
         assert!(parse_line("zygote lib.so").is_none());
         assert!(parse_line("name= lib.so").is_none());
+        assert!(parse_line("path=relative/bin/tool lib.so").is_none());
+        assert!(parse_line("name=tool unknown lib.so").is_none());
     }
 }

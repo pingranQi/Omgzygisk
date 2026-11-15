@@ -194,17 +194,18 @@ fn run_zn_companion(library_path: &str, fd: i32) -> Result<()> {
     }
 
     let module = unsafe { &*(module_ptr as *const ZygiskNextCompanionModule) };
-    if !(1..=4).contains(&module.target_api_version)
+    if !(3..=4).contains(&module.target_api_version)
         || module.on_module_connected.is_none() {
         control.write_u8(0)?;
         anyhow::bail!("Native ZN companion API is unsupported or incomplete");
     }
 
+    control.write_u8(1)?;
+    info!("ZN companion loaded: {}", library_path);
     if let Some(callback) = module.on_companion_loaded {
         unsafe { callback() };
     }
-    control.write_u8(1)?;
-    info!("ZN companion loaded: {}", library_path);
+    let on_module_connected = module.on_module_connected;
 
     loop {
         if !is_socket_alive(&control) {
@@ -221,10 +222,13 @@ fn run_zn_companion(library_path: &str, fd: i32) -> Result<()> {
         };
 
         let mut client = unsafe { UnixStream::from_raw_fd(client_fd) };
-        client.write_u8(1)?;
+        if let Err(error) = client.write_u8(1) {
+            warn!("Failed to acknowledge Native ZN companion client: {}", error);
+            continue;
+        }
         let owned_by_module = client.into_raw_fd();
-        if let Some(callback) = module.on_module_connected {
-            unsafe { callback(owned_by_module) };
+        if let Some(callback) = on_module_connected {
+            thread::spawn(move || unsafe { callback(owned_by_module) });
         } else {
             unsafe { libc::close(owned_by_module) };
         }
