@@ -176,11 +176,10 @@ impl MountNamespaceManager {
             };
 
         for info in mount_infos {
-            let path_str = info.mount_point.to_str().unwrap_or("");
             let mount_source_str = info.mount_source.as_deref();
 
             let should_unmount = info.root.starts_with("/adb/modules")
-                || path_str.starts_with("/data/adb/modules")
+                || info.mount_point.starts_with("/data/adb/modules")
                 || (mount_source_str.is_some()
                     && root_sources.contains(&mount_source_str.unwrap()))
                 || (ksu_module_source.is_some() && info.mount_source == ksu_module_source);
