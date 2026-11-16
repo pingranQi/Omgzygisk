@@ -6,43 +6,22 @@
 #include <cstddef>
 
 #include "logging.hpp"
+#include "omg_loader_core.h"
 
 namespace socket_utils {
 
 ssize_t xread(int fd, void* buf, size_t count) {
-    size_t read_sz = 0;
-    ssize_t ret;
-    do {
-        ret = read(fd, (std::byte*) buf + read_sz, count - read_sz);
-        if (ret < 0) {
-            if (errno == EINTR) continue;
-            PLOGE("read");
-            return ret;
-        }
-        read_sz += ret;
-    } while (read_sz != count && ret != 0);
-    if (read_sz != count) {
-        PLOGE("read (%zu != %zu)", count, read_sz);
+    const ssize_t result = omg_loader_core_read_exact(fd, static_cast<uint8_t*>(buf), count);
+    if (result < 0 || static_cast<size_t>(result) != count) {
+        PLOGE("read (%zd != %zu)", result, count);
     }
-    return read_sz;
+    return result;
 }
 
 size_t xwrite(int fd, const void* buf, size_t count) {
-    size_t write_sz = 0;
-    ssize_t ret;
-    do {
-        ret = write(fd, (std::byte*) buf + write_sz, count - write_sz);
-        if (ret < 0) {
-            if (errno == EINTR) continue;
-            PLOGE("write");
-            return write_sz;
-        }
-        write_sz += ret;
-    } while (write_sz != count && ret != 0);
-    if (write_sz != count) {
-        PLOGE("write (%zu != %zu)", count, write_sz);
-    }
-    return write_sz;
+    const size_t result = omg_loader_core_write_exact(fd, static_cast<const uint8_t*>(buf), count);
+    if (result != count) PLOGE("write (%zu != %zu)", result, count);
+    return result;
 }
 
 ssize_t xrecvmsg(int sockfd, struct msghdr* msg, int flags) {
@@ -107,24 +86,13 @@ void* recv_fds(int sockfd, char* cmsgbuf, size_t bufsz, int cnt) {
     return CMSG_DATA(cmsg);
 }
 
-template <typename T>
-inline T read_exact_or(int fd, T fail) {
-    T res;
-    return sizeof(T) == xread(fd, &res, sizeof(T)) ? res : fail;
-}
+uint8_t read_u8(int fd) { return omg_loader_core_read_u8(fd); }
 
-template <typename T>
-inline bool write_exact(int fd, T val) {
-    return sizeof(T) == xwrite(fd, &val, sizeof(T));
-}
+uint32_t read_u32(int fd) { return omg_loader_core_read_u32(fd); }
 
-uint8_t read_u8(int fd) { return read_exact_or<uint8_t>(fd, 0); }
+size_t read_usize(int fd) { return omg_loader_core_read_usize(fd); }
 
-uint32_t read_u32(int fd) { return read_exact_or<uint32_t>(fd, 0); }
-
-size_t read_usize(int fd) { return read_exact_or<size_t>(fd, 0); }
-
-bool write_usize(int fd, size_t val) { return write_exact<size_t>(fd, val); }
+bool write_usize(int fd, size_t val) { return omg_loader_core_write_usize(fd, val); }
 
 std::string read_string(int fd) {
     auto len = read_usize(fd);
@@ -134,9 +102,9 @@ std::string read_string(int fd) {
     return buf;
 }
 
-bool write_u8(int fd, uint8_t val) { return write_exact<uint8_t>(fd, val); }
+bool write_u8(int fd, uint8_t val) { return omg_loader_core_write_u8(fd, val); }
 
-bool write_u32(int fd, uint32_t val) { return write_exact<uint32_t>(fd, val); }
+bool write_u32(int fd, uint32_t val) { return omg_loader_core_write_u32(fd, val); }
 
 bool write_string(int fd, std::string_view str) {
     return write_usize(fd, str.size()) && str.size() == xwrite(fd, str.data(), str.size());
