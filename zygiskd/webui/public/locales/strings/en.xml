@@ -97,4 +97,5 @@
 	<string name="status_zn_api">Native ZN API</string>
 	<string name="status_zn_api_unavailable">Not implemented</string>
 	<string name="status_zn_api_desc">Native ZN modules require an exec-time bootstrap and a separate native-process lifecycle. This build provides Zygisk API and FN, not Native ZN.</string>
+	<string name="fn_pending_remove">Pending removal</string>
 </resources>
