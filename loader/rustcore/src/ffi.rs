@@ -5,6 +5,8 @@
 
 use crate::control::{self, Command};
 
+const MAX_CONTROL_PACKET_BYTES: usize = 8 + control::MAX_PAYLOAD_BYTES;
+
 /// ABI version for compile-time/runtime compatibility checks.
 #[unsafe(no_mangle)]
 pub extern "C" fn omg_loader_core_abi_version() -> u32 {
@@ -32,7 +34,7 @@ pub unsafe extern "C" fn omg_loader_core_validate_control_packet(
     data: *const u8,
     length: usize,
 ) -> i32 {
-    if length > control::MAX_PAYLOAD_BYTES {
+    if length > MAX_CONTROL_PACKET_BYTES {
         return 2;
     }
     if data.is_null() {
@@ -70,6 +72,15 @@ mod tests {
         assert!(omg_loader_core_validate_daemon_action(13));
         assert!(!omg_loader_core_validate_daemon_action(14));
         assert!(!omg_loader_core_validate_daemon_action(u8::MAX));
+    }
+
+    #[test]
+    fn rejects_packets_larger_than_the_wire_limit() {
+        // SAFETY: length is rejected before the pointer is dereferenced.
+        assert_eq!(
+            unsafe { omg_loader_core_validate_control_packet(std::ptr::null(), MAX_CONTROL_PACKET_BYTES + 1) },
+            2
+        );
     }
 
     #[test]
