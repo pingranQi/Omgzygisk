@@ -30,24 +30,31 @@ This is an incremental migration. It must preserve the existing Zygisk/ZN ABI, d
 ## Current baseline
 
 - `zygiskd/` is already a Rust daemon.
-- `loader/rustcore/` contains host-testable Rust protocol, descriptor, and monitor primitives, but its README currently describes it as not linked into Android binaries.
-- `loader/src/` still contains substantial project-owned C++ code and is the main migration target.
-- CMake already enables both C and C++; the Android build currently compiles C as C18 and C++ as C++20.
+- `loader/rustcore/` is linked into the ARM64 Android ptrace binary as a Rust static library; the monitor lifecycle is routed through its C ABI.
+- The procedural ptrace cleanup helper and Unix socket transport primitives are implemented in C. The C++ socket header is now a thin convenience wrapper over the C ABI.
+- `loader/src/` still contains substantial project-owned C++ code, especially injector, ELF/linker, and ptracer orchestration units; these remain the main migration target.
+- CMake enables both C and C++; the Android Gradle toolchain supplies the C18 dialect flag, while C++ remains on C++23.
 
 ## Staged plan
 
 ### Stage 1 — Make Rust core a production component
 
+**Status: initial integration complete; broader core migration remains in progress.**
+
 - Turn `loader/rustcore` into a Rust library with a small, stable C ABI.
 - Link it into the ARM64 Android native build.
-- Route monitor state transitions and bounded protocol validation through Rust.
-- Keep syscalls, ptrace, and Android linker operations in the C adapter.
+- Route monitor lifecycle state transitions through Rust.
+- Keep syscalls, ptrace, and Android linker operations in the native adapter.
+- Continue moving protocol validation and descriptor ownership from C++ wrappers into Rust.
 
 ### Stage 2 — Move procedural native code to C
 
-- Convert independent procedural `.cpp` units to `.c`.
-- Replace C++-only headers with C-compatible headers.
+**Status: started.**
+
+- Convert independent procedural `.cpp` units to `.c`; the ptrace cleanup and socket transport primitives are the first converted units.
+- Replace C++-only headers with C-compatible headers; retain only small inline C++ convenience wrappers where current callers still use C++ strings.
 - Keep classes and upstream C++ dependencies behind narrow adapter boundaries until each subsystem has a tested C/Rust replacement.
+- Next candidates are filesystem/proc parsing helpers and ptracer utilities, after their ownership and call contracts are separated from C++ containers.
 
 ### Stage 3 — Move policy and data ownership to Rust
 
