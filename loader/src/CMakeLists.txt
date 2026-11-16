@@ -53,13 +53,13 @@ add_definitions(-DWORK_DIRECTORY=\"${WORK_DIRECTORY}\")
 # Release defaults, keeping -Oz effective instead of being overridden by -O2.
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     add_compile_options(
-        -Oz
-        -flto
-        -Wno-unused
-        -Wno-unused-parameter
-        -fvisibility=hidden
-        -fno-unwind-tables
-        -fno-asynchronous-unwind-tables
+        "$<$<COMPILE_LANGUAGE:C,CXX>:-Oz>"
+        "$<$<COMPILE_LANGUAGE:C,CXX>:-flto>"
+        "$<$<COMPILE_LANGUAGE:C,CXX>:-Wno-unused>"
+        "$<$<COMPILE_LANGUAGE:C,CXX>:-Wno-unused-parameter>"
+        "$<$<COMPILE_LANGUAGE:C,CXX>:-fvisibility=hidden>"
+        "$<$<COMPILE_LANGUAGE:C,CXX>:-fno-unwind-tables>"
+        "$<$<COMPILE_LANGUAGE:C,CXX>:-fno-asynchronous-unwind-tables>"
         "$<$<COMPILE_LANGUAGE:CXX>:-fvisibility-inlines-hidden>"
     )
     # These are linker flags, not compiler flags. AGP handles final symbol
