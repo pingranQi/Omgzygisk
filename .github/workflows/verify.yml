@@ -76,6 +76,19 @@ jobs:
       - name: Test release ZIP footprint report
         run: python3 -m unittest discover -s tests -p 'test_release_footprint_report.py' -v
 
+  common-c:
+    name: Common C utility tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Compile and run C18 utility tests
+        run: |
+          cc -std=c18 -D_POSIX_C_SOURCE=200809L -Wall -Wextra -Werror \
+            -Iloader/src/include \
+            tests/test_common_c.c loader/src/common/files.c loader/src/common/misc.c \
+            -o /tmp/common-c-tests
+          /tmp/common-c-tests
+
   android:
     name: Android release package
     runs-on: ubuntu-latest
