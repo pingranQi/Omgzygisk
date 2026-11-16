@@ -169,7 +169,6 @@ private:
         std::set<pid_t> stub_processes_;
     };
 
-    void set_tracing_state(TracingState state);
     void write_abi_status_section(std::string &status_text, const Status &daemon_status);
 
     // Owned Components (Declaration order must match initializer list)
