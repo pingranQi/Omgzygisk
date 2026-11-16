@@ -21,8 +21,10 @@ fi
 (
   waited=0
   while [ "$(getprop sys.boot_completed 2>/dev/null)" != "1" ] && [ "$waited" -lt 180 ]; do
-    sleep 2
-    waited=$((waited + 2))
+    # Poll less frequently to reduce wakeups during early boot; keep the same
+    # three-minute upper bound for the health witness.
+    sleep 5
+    waited=$((waited + 5))
   done
   if [ "$(getprop sys.boot_completed 2>/dev/null)" = "1" ]; then
     rm -f "@WORK_DIRECTORY@/boot_fail_count" \
