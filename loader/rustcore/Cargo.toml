@@ -9,3 +9,10 @@ publish = false
 [lib]
 path = "src/lib.rs"
 crate-type = ["rlib", "staticlib"]
+
+[profile.release]
+# Prefer a small Android runtime footprint over peak compile-time throughput.
+opt-level = "z"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
