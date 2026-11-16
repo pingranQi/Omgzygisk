@@ -7,17 +7,13 @@ import IconSearch from "~icons/material-symbols/search";
 import { Card } from "../components/atoms/Card";
 import { Icon } from "../components/atoms/Icon";
 import { IconButton } from "../components/atoms/IconButton";
-import { Switch } from "../components/atoms/Switch";
 import { SectionHeader } from "../components/molecules/SectionHeader";
-import { useVisibleInterval } from "../hooks/useVisibleInterval";
 import { cli, keybind } from "../state/app";
 import { messageOf } from "../state/system";
 import { tr } from "../utils/tr";
 
 /** logcat -v brief row: "I/zygiskd(1234): message" (pid optional). */
 const LEVEL_RE = /^([VDIWEF])\/([^\s(]+)(?:\((\d+)\))?: ?(.*)$/;
-
-const REFRESH_MS = 15000;
 
 /**
  * Everything written into the <pre> goes through esc() first; the level class
@@ -84,7 +80,6 @@ export function LogsView() {
 	const loadInFlight = useRef(false);
 
 	const [lines, setLines] = useState(120);
-	const [auto, setAuto] = useState(true);
 	const [filter, setFilter] = useState("");
 	const [raw, setRaw] = useState("");
 	const [copied, setCopied] = useState(false);
@@ -134,8 +129,6 @@ export function LogsView() {
 	useEffect(() => {
 		void load();
 	}, [load]);
-
-	useVisibleInterval(load, REFRESH_MS, auto);
 
 	useEffect(() => () => window.clearTimeout(copyTimer.current), []);
 
@@ -203,14 +196,6 @@ export function LogsView() {
 								)
 							}
 							className="h-10 w-20 shrink-0 rounded-onx-md bg-onx-container-high px-2 text-onx-body text-onx-on"
-						/>
-						<span className="shrink-0 text-onx-caption text-onx-muted">
-							{tr("logs_auto", "Auto")}
-						</span>
-						<Switch
-							aria-label={tr("logs_auto", "Auto")}
-							checked={auto}
-							onChange={setAuto}
 						/>
 						<span className="flex-1" />
 						<IconButton
