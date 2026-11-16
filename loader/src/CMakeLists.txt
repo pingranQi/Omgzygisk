@@ -93,5 +93,3 @@ target_include_directories(libzygisk_ptrace.so PRIVATE include ../rustcore/inclu
 target_link_libraries(libzygisk_ptrace.so log common omg_rust_core dl m)
 
 add_subdirectory(external)
-
-add_subdirectory(external)
