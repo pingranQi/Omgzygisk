@@ -93,6 +93,36 @@ pub unsafe extern "C" fn omg_loader_core_write_usize(fd: i32, value: usize) -> b
 }
 
 
+
+/// Connect to a Unix-domain stream socket, retrying once per second.
+/// Returns the owned file descriptor, or the negated OS error number.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn omg_loader_core_connect_unix(path: *const core::ffi::c_char, retries: u8) -> i32 {
+    use std::ffi::CStr;
+    use std::os::fd::IntoRawFd;
+    use std::os::unix::ffi::OsStrExt;
+    use std::os::unix::net::UnixStream;
+    use std::time::Duration;
+
+    if path.is_null() { return -22; } // EINVAL
+    // SAFETY: the caller supplies a valid NUL-terminated path for this call.
+    let path = unsafe { CStr::from_ptr(path) };
+    let path = std::ffi::OsStr::from_bytes(path.to_bytes());
+    let mut attempts = retries;
+    let mut last_error = 2; // ENOENT, matching a missing daemon socket.
+    while attempts != 0 {
+        match UnixStream::connect(path) {
+            Ok(stream) => return stream.into_raw_fd(),
+            Err(error) => last_error = error.raw_os_error().unwrap_or(5),
+        }
+        attempts -= 1;
+        if attempts != 0 {
+            std::thread::sleep(Duration::from_secs(1));
+        }
+    }
+    -last_error
+}
+
 const MAX_CONTROL_PACKET_BYTES: usize = 8 + control::MAX_PAYLOAD_BYTES;
 
 /// Apply one monitor lifecycle event. State values: tracing=1, stopping=2,
