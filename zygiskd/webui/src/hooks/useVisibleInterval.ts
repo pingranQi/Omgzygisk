@@ -1,10 +1,10 @@
 import { useEffect } from "react";
 
 /**
- * Run a lightweight polling task only while the WebView is visible.
+ * Run a lightweight status refresh only while the WebView is visible.
  *
  * Android may keep a WebView alive after its manager screen is backgrounded.
- * Continuing shell-backed status/log queries in that state wastes wakeups and
+ * Continuing shell-backed status queries in that state wastes wakeups and
  * process launches without producing visible information. Refresh once when
  * the page becomes visible again so the UI catches up immediately.
  */
