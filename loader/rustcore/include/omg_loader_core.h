@@ -9,6 +9,16 @@
 extern "C" {
 #endif
 
+/* Rust-owned stream I/O and native-endian IPC primitives. */
+ssize_t omg_loader_core_read_exact(int fd, uint8_t *buffer, size_t length);
+size_t omg_loader_core_write_exact(int fd, const uint8_t *buffer, size_t length);
+uint8_t omg_loader_core_read_u8(int fd);
+uint32_t omg_loader_core_read_u32(int fd);
+size_t omg_loader_core_read_usize(int fd);
+bool omg_loader_core_write_u8(int fd, uint8_t value);
+bool omg_loader_core_write_u32(int fd, uint32_t value);
+bool omg_loader_core_write_usize(int fd, size_t value);
+
 /* Must match the ABI version reported by the linked Rust static library. */
 uint32_t omg_loader_core_abi_version(void);
 
