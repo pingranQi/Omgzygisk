@@ -12,7 +12,7 @@ import {
 const root = document.querySelector<HTMLDivElement>("#app");
 
 if (root === null) {
-	throw new Error("OnyxZygisk WebUI root element is missing");
+	throw new Error("OmgZygisk WebUI root element is missing");
 }
 
 const hasHostBridge = getBridge().isWebui();
