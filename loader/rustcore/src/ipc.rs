@@ -208,7 +208,7 @@ impl Writer {
         // Reserve the length prefix and payload together. This avoids a
         // second growth/reallocation when a fresh writer serializes a string.
         let mut prefix = [0u8; 8];
-        let prefix_len = if usize::BITS == 32 {
+        let prefix_len: usize = if usize::BITS == 32 {
             let length = u32::try_from(value.len()).map_err(|_| Error::LengthOverflow)?;
             prefix[..4].copy_from_slice(&length.to_le_bytes());
             4
