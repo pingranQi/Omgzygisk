@@ -134,14 +134,14 @@ private:
      * @param name The symbol name.
      * @return The 32-bit hash value.
      */
-    constexpr static uint32_t calculateSysvHash(std::string_view name);
+    static uint32_t calculateSysvHash(std::string_view name);
 
     /**
      * @brief Calculates the GNU hash for a symbol name.
      * @param name The symbol name.
      * @return The 32-bit hash value.
      */
-    constexpr static uint32_t calculateGnuHash(std::string_view name);
+    static uint32_t calculateGnuHash(std::string_view name);
 
     /**
      * @brief Iterates through loaded libraries to find the base address and path of the target
@@ -186,28 +186,6 @@ private:
     // Cache for linear symbol lookups
     std::unordered_map<std::string_view, const ElfW(Sym)*> symbol_cache_;
 };
-
-constexpr uint32_t ElfImage::calculateSysvHash(std::string_view name) {
-    uint32_t h = 0;
-    uint32_t g = 0;
-    for (const unsigned char c : name) {
-        h = (h << 4) + c;
-        g = h & 0xf0000000;
-        if (g != 0) {
-            h ^= g >> 24;
-        }
-        h &= ~g;
-    }
-    return h;
-}
-
-constexpr uint32_t ElfImage::calculateGnuHash(std::string_view name) {
-    uint32_t h = 5381;
-    for (const unsigned char c : name) {
-        h = (h << 5) + h + c;  // h * 33 + c
-    }
-    return h;
-}
 
 // --- Helper Functions for Symbol Lookups ---
 
