@@ -59,17 +59,35 @@ length-bounded before parsing.
 - The monitor's Unix datagram control-packet framing and command validation
   now run through the Rust decoder. C++ retains socket I/O and dispatches the
   validated command to existing platform operations.
+- Monitor lifecycle transition rules are now owned by the Rust core and
+  exposed through the same narrow C ABI. C++ retains event-loop, ptrace and
+  status-file side effects; it no longer decides legal state transitions.
 - Android linker, ptrace, JNI and hook adapters remain in C++ until their
   replacements are individually migrated and device-validated; the complete
   injector has not yet been ported.
 
+## Independence and scope
+
+OmgZygisk should own its runtime architecture rather than preserve an upstream
+framework as a permanent outer shell. Upstream code is treated as a source of
+specific compatible interfaces or independently licensed components, not as
+an architectural template to reproduce wholesale. Keep only the Zygisk/ZN ABI
+contracts and platform integration that are required for compatibility.
+
+Keep existing process-isolation and visibility controls behind one documented
+policy/configuration boundary. This is a maintainability goal: do not add
+covert persistence, security-tool evasion, or behavior that bypasses Android
+or root-manager security controls.
+
 ## Suggested migration order
 
-1. Link the Rust static library into the Android native build and add a
-   link-time ABI smoke test.
-2. Move the loader's protocol parsing and monitor policy behind the new FFI.
+1. Keep the C ABI narrow and verify every Android ARM64 link.
+2. Move protocol parsing and monitor lifecycle decisions behind the Rust core.
 3. Move platform-independent ELF metadata parsing into Rust while retaining
    linker-specific accessors in C.
-4. Convert isolated C++ utility modules to C where they use no C++ runtime.
-5. Reduce the remaining C++ surface to unavoidable third-party or Android ABI
+4. Inventory upstream-derived wrappers and remove layers that only forward
+   calls or duplicate state; retain required ABI shims and license notices.
+5. Consolidate existing process-isolation configuration and policy without
+   adding new stealth or security-evasion behavior.
+6. Reduce the remaining C++ surface to unavoidable third-party or Android ABI
    adapters, with explicit ownership and thread-safety contracts.
