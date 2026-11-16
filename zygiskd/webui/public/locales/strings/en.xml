@@ -95,7 +95,7 @@
 	<string name="status_memory_policy_value">High-address VMA gap preferred</string>
 	<string name="status_memory_policy_desc">A guarded high-address gap between existing VMAs is requested. The kernel validates the hint; safe fallback is used when unavailable.</string>
 	<string name="status_zn_api">Native ZN API</string>
-	<string name="status_zn_api_unavailable">Not implemented</string>
-	<string name="status_zn_api_desc">Native ZN modules require an exec-time bootstrap and a separate native-process lifecycle. This build provides Zygisk API and FN, not Native ZN.</string>
+	<string name="status_zn_api_experimental">Implemented (experimental)</string>
+	<string name="status_zn_api_desc">Native ZN v1–v4 loading, hooks, symbol resolution and companion support are integrated. HyperOS runtime support is experimental; device-level compatibility is not yet verified.</string>
 	<string name="fn_pending_remove">Pending removal</string>
 </resources>
