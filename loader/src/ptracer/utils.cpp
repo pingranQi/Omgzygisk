@@ -435,7 +435,7 @@ int fork_dont_care() {
         // second child (the daemon) continues in the background. It then returns
         // the PID of the child it forked, signaling to the caller that it is the parent.
         int status;
-        waitpid(pid, &status, __WALL);
+        onyx_waitpid_retry(pid, &status, __WALL);
         return pid;
     }
 
@@ -521,11 +521,11 @@ void tracee_skip_syscall(int pid) {
  */
 void wait_for_trace(int pid, int *status, int flags) {
     while (true) {
-        if (waitpid(pid, status, flags) == -1) {
+        if (onyx_waitpid_retry(pid, status, flags) == -1) {
             if (errno == EINTR) {
                 continue;  // Interrupted by a signal, just retry.
             }
-            PLOGE("waitpid(%d)", pid);
+            PLOGE("onyx_waitpid_retry(%d)", pid);
             exit(1);
         }
 
@@ -646,9 +646,9 @@ uintptr_t find_syscall_gadget(int pid, const std::vector<MapInfo> &remote_info) 
 
 bool wait_for_ptrace_syscall_stop(int pid, int *status) {
     while (true) {
-        if (waitpid(pid, status, __WALL) == -1) {
+        if (onyx_waitpid_retry(pid, status, __WALL) == -1) {
             if (errno == EINTR) continue;
-            PLOGE("waitpid(%d) awaiting syscall-stop", pid);
+            PLOGE("onyx_waitpid_retry(%d) awaiting syscall-stop", pid);
             return false;
         }
         if (WIFEXITED(*status) || WIFSIGNALED(*status)) {
