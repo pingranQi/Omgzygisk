@@ -280,10 +280,15 @@ DCL_HOOK_FUNC(static int, pthread_attr_setstacksize, void *target, size_t size) 
 #undef DCL_HOOK_FUNC
 
 // -----------------------------------------------------------------
-static size_t get_fd_max() {
+static size_t get_fd_limit() {
+    // Only descriptors below the soft limit can be opened by this process.
+    // Using rlim_max here can allocate a needlessly large bitmap in every
+    // Zygote child (rlim_max is commonly much larger than rlim_cur).
     rlimit r{32768, 32768};
-    getrlimit(RLIMIT_NOFILE, &r);
-    return r.rlim_max;
+    if (getrlimit(RLIMIT_NOFILE, &r) != 0) {
+        return 32768;
+    }
+    return static_cast<size_t>(r.rlim_cur);
 }
 
 ZygiskContext::ZygiskContext(JNIEnv *env, void *args)
@@ -293,7 +298,7 @@ ZygiskContext::ZygiskContext(JNIEnv *env, void *args)
       pid(-1),
       flags(0),
       info_flags(0),
-      allowed_fds(get_fd_max()),
+      allowed_fds(get_fd_limit()),
       hook_info_lock(PTHREAD_MUTEX_INITIALIZER) {
     g_ctx = this;
 }
