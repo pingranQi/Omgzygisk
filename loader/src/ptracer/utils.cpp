@@ -27,6 +27,7 @@
 #include "logging.hpp"
 #include "proc_maps.h"
 #include "proc_process.h"
+#include "proc_memory.h"
 
 /**
  * @brief Scans and parses the /proc/[pid]/maps file for a given process.
@@ -72,13 +73,7 @@ std::vector<MapInfo> MapInfo::Scan(const std::string &pid) {
  * @return The number of bytes written, or -1 on error.
  */
 ssize_t write_proc(int pid, uintptr_t remote_addr, const void *buf, size_t len) {
-    // The iovec struct's iov_base is a non-const void*, so we must cast away constness.
-    // This is safe as process_vm_writev treats the local iovec as a source.
-    struct iovec local{.iov_base = const_cast<void *>(buf), .iov_len = len};
-    struct iovec remote{.iov_base = (void *) remote_addr, .iov_len = len};
-
-    ssize_t bytes_written = process_vm_writev(pid, &local, 1, &remote, 1, 0);
-
+    const ssize_t bytes_written = onyx_proc_write_memory(pid, remote_addr, buf, len);
     if (bytes_written == -1) {
         PLOGE("process_vm_writev to addr 0x%" PRIxPTR, remote_addr);
     } else if (static_cast<size_t>(bytes_written) != len) {
@@ -88,16 +83,8 @@ ssize_t write_proc(int pid, uintptr_t remote_addr, const void *buf, size_t len) 
     return bytes_written;
 }
 
-/**
- * @brief Reads data from another process's memory using process_vm_readv.
- * @return The number of bytes read, or -1 on error.
- */
 ssize_t read_proc(int pid, uintptr_t remote_addr, void *buf, size_t len) {
-    struct iovec local{.iov_base = buf, .iov_len = len};
-    struct iovec remote{.iov_base = (void *) remote_addr, .iov_len = len};
-
-    ssize_t bytes_read = process_vm_readv(pid, &local, 1, &remote, 1, 0);
-
+    const ssize_t bytes_read = onyx_proc_read_memory(pid, remote_addr, buf, len);
     if (bytes_read == -1) {
         PLOGE("process_vm_readv from addr 0x%" PRIxPTR, remote_addr);
     } else if (static_cast<size_t>(bytes_read) != len) {
