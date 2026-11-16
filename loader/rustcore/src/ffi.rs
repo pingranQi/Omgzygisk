@@ -1,6 +1,5 @@
 //! Stable C ABI for the Android-side monitor adapter.
 use crate::monitor::{Monitor, TracingState};
-use std::ptr;
 
 pub struct OmgMonitorHandle { inner: Monitor<'static> }
 
