@@ -70,3 +70,33 @@ target_include_directories(libzygisk_ptrace.so PRIVATE include ../rustcore/inclu
 target_link_libraries(libzygisk_ptrace.so log common omg_rust_core dl m)
 
 add_subdirectory(external)
+
+# Keep size-oriented compiler flags on the final target compile command.
+# Android's Release configuration appends its own -O2; target options are
+# emitted afterwards so -Oz remains the effective optimization level.
+function(omg_enable_release_size target)
+    target_compile_options(${target} PRIVATE
+        "$<$<CONFIG:Release>:-Oz>"
+        "$<$<CONFIG:Release>:-flto>"
+        "$<$<CONFIG:Release>:-Wno-unused>"
+        "$<$<CONFIG:Release>:-Wno-unused-parameter>"
+        "$<$<CONFIG:Release>:-fvisibility=hidden>"
+        "$<$<CONFIG:Release>:-fvisibility-inlines-hidden>"
+        "$<$<CONFIG:Release>:-fno-unwind-tables>"
+        "$<$<CONFIG:Release>:-fno-asynchronous-unwind-tables>"
+    )
+endfunction()
+
+omg_enable_release_size(common)
+omg_enable_release_size(zygisk)
+omg_enable_release_size(libzygisk_ptrace.so)
+
+# Linker-only options belong on final link steps, not compiler invocations.
+# Leave symbol stripping to AGP so its native debug-symbol handling remains intact.
+foreach(target zygisk libzygisk_ptrace.so)
+    target_link_options(${target} PRIVATE
+        "$<$<CONFIG:Release>:-flto>"
+        "$<$<CONFIG:Release>:-Wl,--exclude-libs,ALL>"
+        "$<$<CONFIG:Release>:-Wl,--gc-sections>"
+    )
+endforeach()
