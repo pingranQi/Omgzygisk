@@ -31,7 +31,7 @@ This is an incremental migration. It must preserve the existing Zygisk/ZN ABI, d
 
 - `zygiskd/` is already a Rust daemon.
 - `loader/rustcore/` is linked into the ARM64 Android ptrace binary as a Rust static library; the monitor lifecycle is routed through its C ABI.
-- The procedural ptrace cleanup helper and Unix socket transport primitives are implemented in C. The C++ socket header is now a thin convenience wrapper over the C ABI.
+- The procedural ptrace cleanup helper, Unix socket transport primitives, and bounded file line reader are implemented in C. C++ retains thin callback/RAII adapters for existing callers.
 - `loader/src/` still contains substantial project-owned C++ code, especially injector, ELF/linker, and ptracer orchestration units; these remain the main migration target.
 - CMake enables both C and C++; the Android Gradle toolchain supplies the C18 dialect flag, while C++ remains on C++23.
 
@@ -51,10 +51,10 @@ This is an incremental migration. It must preserve the existing Zygisk/ZN ABI, d
 
 **Status: started.**
 
-- Convert independent procedural `.cpp` units to `.c`; the ptrace cleanup and socket transport primitives are the first converted units.
+- Convert independent procedural `.cpp` units to `.c`; the ptrace cleanup, socket transport, and file line reader are the first converted units.
 - Replace C++-only headers with C-compatible headers; retain only small inline C++ convenience wrappers where current callers still use C++ strings.
 - Keep classes and upstream C++ dependencies behind narrow adapter boundaries until each subsystem has a tested C/Rust replacement.
-- Next candidates are filesystem/proc parsing helpers and ptracer utilities, after their ownership and call contracts are separated from C++ containers.
+- Next candidates are proc maps parsing and ptracer utilities, after their ownership and call contracts are separated from C++ containers.
 
 ### Stage 3 — Move policy and data ownership to Rust
 
