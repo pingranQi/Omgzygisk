@@ -221,6 +221,37 @@ pub unsafe extern "C" fn omg_loader_core_validate_control_packet(
 }
 
 
+/// Compute the ELF System V symbol hash over a byte string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn omg_loader_core_elf_sysv_hash(name: *const u8, length: usize) -> u32 {
+    if name.is_null() && length != 0 { return 0; }
+    // SAFETY: the caller provides length readable bytes; zero-length input is valid.
+    let bytes = if length == 0 { &[] } else { unsafe { core::slice::from_raw_parts(name, length) } };
+    let mut hash = 0u32;
+    for &byte in bytes {
+        hash = hash.wrapping_shl(4).wrapping_add(byte as u32);
+        let high = hash & 0xf000_0000;
+        if high != 0 {
+            hash ^= high >> 24;
+        }
+        hash &= !high;
+    }
+    hash
+}
+
+/// Compute the GNU ELF symbol hash over a byte string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn omg_loader_core_elf_gnu_hash(name: *const u8, length: usize) -> u32 {
+    if name.is_null() && length != 0 { return 0; }
+    // SAFETY: the caller provides length readable bytes; zero-length input is valid.
+    let bytes = if length == 0 { &[] } else { unsafe { core::slice::from_raw_parts(name, length) } };
+    let mut hash = 5381u32;
+    for &byte in bytes {
+        hash = hash.wrapping_mul(33).wrapping_add(byte as u32);
+    }
+    hash
+}
+
 /// Validate ELF64 little-endian AArch64 ET_DYN metadata before C++ maps sections.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn omg_loader_core_validate_elf64_aarch64(data: *const u8, length: usize) -> bool {
@@ -333,6 +364,20 @@ pub unsafe extern "C" fn omg_loader_core_validate_elf64_aarch64(data: *const u8,
 mod tests {
     use super::*;
 
+
+    #[test]
+    fn elf_hashes_match_standard_algorithms() {
+        let name = b"printf";
+        // SAFETY: name is a valid readable byte array for this call.
+        assert_eq!(unsafe { omg_loader_core_elf_sysv_hash(name.as_ptr(), name.len()) }, 125_371_814);
+        // SAFETY: name is a valid readable byte array for this call.
+        assert_eq!(unsafe { omg_loader_core_elf_gnu_hash(name.as_ptr(), name.len()) }, 359_345_080);
+        // Empty input is valid and must preserve each algorithm's initial value.
+        assert_eq!(unsafe { omg_loader_core_elf_sysv_hash(core::ptr::NonNull::<u8>::dangling().as_ptr(), 0) }, 0);
+        assert_eq!(unsafe { omg_loader_core_elf_gnu_hash(core::ptr::NonNull::<u8>::dangling().as_ptr(), 0) }, 5381);
+        assert_eq!(unsafe { omg_loader_core_elf_sysv_hash(core::ptr::null(), 1) }, 0);
+        assert_eq!(unsafe { omg_loader_core_elf_gnu_hash(core::ptr::null(), 1) }, 0);
+    }
 
     #[test]
     fn crash_loop_counter_matches_window_and_running_generation_policy() {
