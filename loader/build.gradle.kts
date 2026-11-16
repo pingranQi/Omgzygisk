@@ -34,14 +34,6 @@ val defaultCFlags = arrayOf(
     "-Wno-builtin-macro-redefined", "-D__FILE__=__FILE_NAME__"
 )
 
-val releaseFlags = arrayOf(
-    "-Oz", "-flto",
-    "-Wno-unused", "-Wno-unused-parameter",
-    "-fvisibility=hidden", "-fvisibility-inlines-hidden",
-    "-fno-unwind-tables", "-fno-asynchronous-unwind-tables",
-    "-Wl,--exclude-libs,ALL", "-Wl,--gc-sections", "-Wl,--strip-all"
-)
-
 android {
     buildFeatures {
         androidResources = false
@@ -83,8 +75,6 @@ android {
         }
         release {
             externalNativeBuild.cmake {
-                cFlags += releaseFlags
-                cppFlags += releaseFlags
                 arguments += "-DZKSU_VERSION=$verName-$verCode-$commitHash-release"
             }
         }
