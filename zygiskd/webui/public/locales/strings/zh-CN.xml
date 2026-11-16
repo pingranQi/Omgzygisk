@@ -95,7 +95,7 @@
 	<string name="status_memory_policy_value">优先选择高地址 VMA 空洞</string>
 	<string name="status_memory_policy_desc">请求使用远离现有 VMA 且空间足够的高地址空洞；由内核确认映射地址，无法满足时安全回退。</string>
 	<string name="status_zn_api">Native ZN API</string>
-	<string name="status_zn_api_unavailable">尚未实现</string>
-	<string name="status_zn_api_desc">Native ZN 模块需要 exec 时注入引导程序，并具备独立的原生进程生命周期管理。本版本提供 Zygisk API 和 FN，尚不支持 Native ZN。</string>
+	<string name="status_zn_api_experimental">已实现（实验性）</string>
+	<string name="status_zn_api_desc">已集成 Native ZN v1–v4 模块加载、Hook、符号解析和 Companion 支持。HyperOS Runtime 支持仍属实验性，尚未完成真机兼容性验证。</string>
 	<string name="fn_pending_remove">待移除</string>
 </resources>
