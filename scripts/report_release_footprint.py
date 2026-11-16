@@ -26,7 +26,7 @@ def abi_for(filename: str) -> str:
     """Return the ABI path component, or the shared/unclassified bucket."""
     parts = Path(filename).parts
     for abi in ABIS:
-        if abi in parts:
+        if any(part == abi or part.startswith(f"{abi}.") for part in parts):
             return abi
     return "shared / unclassified"
 
