@@ -106,7 +106,7 @@ std::string read_string(int fd) {
         return {};
     }
 
-    std::string value(len, '\\0');
+    std::string value(len, '\0');
     if (len != 0 && xread(fd, value.data(), len) != static_cast<ssize_t>(len)) {
         shutdown(fd, SHUT_RDWR);
         return {};
