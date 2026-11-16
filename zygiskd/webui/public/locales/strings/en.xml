@@ -88,8 +88,7 @@
 	<string name="settings_mount_mode_setns">Namespace switch</string>
 	<string name="settings_mount_mode_global">Global</string>
 	<string name="settings_about_section">About</string>
-	<string name="settings_authors">Authors</string>
-	<string name="settings_about_text">An ARM64-only ptrace Zygisk implementation with FN (Functional Node) modules. A fork of NeoZygisk.</string>
+	<string name="settings_about_text">An ARM64-first Zygisk runtime with Native ZN API and FN module support.</string>
 	<string name="status_memory_api_section">Memory and native API</string>
 	<string name="status_memory_policy">Memory placement</string>
 	<string name="status_memory_policy_value">High-address VMA gap preferred</string>
