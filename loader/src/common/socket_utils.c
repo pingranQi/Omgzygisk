@@ -126,10 +126,18 @@ int omg_socket_recv_fd(int socket_fd) {
         return -1;
     }
 
-    int result = -1;
-    memcpy(&result, CMSG_DATA(header), sizeof(result));
+    const size_t first_payload = header->cmsg_len - CMSG_LEN(0);
+    const size_t first_count = first_payload / sizeof(int);
+    int *first_fds = (int *)CMSG_DATA(header);
+    if (first_count == 0) {
+        errno = EPROTO;
+        return -1;
+    }
 
-    /* Close any unexpected extra descriptors rather than leaking them. */
+    int result = first_fds[0];
+    for (size_t i = 1; i < first_count; ++i) close(first_fds[i]);
+
+    /* Close descriptors from any unexpected additional control messages. */
     for (struct cmsghdr *next = CMSG_NXTHDR(&message, header);
          next != NULL; next = CMSG_NXTHDR(&message, next)) {
         if (next->cmsg_level == SOL_SOCKET && next->cmsg_type == SCM_RIGHTS &&
