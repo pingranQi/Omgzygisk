@@ -5,7 +5,7 @@
 #include <sys/sysmacros.h>
 
 namespace {
-int file_line_callback(const char *line, size_t length, void *context) {
+int file_line_callback(const char *line, size_t length, const void *context) {
     const auto &fn = *static_cast<const std::function<bool(std::string_view)> *>(context);
     return fn(std::string_view(line, length));
 }
