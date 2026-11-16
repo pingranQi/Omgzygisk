@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include "proc_memory.h"
 
 #include <errno.h>
