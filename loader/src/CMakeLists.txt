@@ -48,6 +48,29 @@ add_definitions(-DZKSU_VERSION=\"${ZKSU_VERSION}\")
 # Quoting inside the Gradle cFlags is fragile across host OSes.
 add_definitions(-DWORK_DIRECTORY=\"${WORK_DIRECTORY}\")
 
+# Apply size-oriented options before creating targets so they also cover the
+# bundled native dependencies. Directory options are appended after the NDK
+# Release defaults, keeping -Oz effective instead of being overridden by -O2.
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    add_compile_options(
+        -Oz
+        -flto
+        -Wno-unused
+        -Wno-unused-parameter
+        -fvisibility=hidden
+        -fno-unwind-tables
+        -fno-asynchronous-unwind-tables
+        "$<$<COMPILE_LANGUAGE:CXX>:-fvisibility-inlines-hidden>"
+    )
+    # These are linker flags, not compiler flags. AGP handles final symbol
+    # stripping so its native debug-symbol pipeline remains available.
+    add_link_options(
+        -flto
+        -Wl,--exclude-libs,ALL
+        -Wl,--gc-sections
+    )
+endif()
+
 aux_source_directory(common COMMON_SRC_LIST)
 add_library(common STATIC ${COMMON_SRC_LIST})
 target_include_directories(common PRIVATE include ../rustcore/include)
@@ -71,32 +94,4 @@ target_link_libraries(libzygisk_ptrace.so log common omg_rust_core dl m)
 
 add_subdirectory(external)
 
-# Keep size-oriented compiler flags on the final target compile command.
-# Android's Release configuration appends its own -O2; target options are
-# emitted afterwards so -Oz remains the effective optimization level.
-function(omg_enable_release_size target)
-    target_compile_options(${target} PRIVATE
-        "$<$<CONFIG:Release>:-Oz>"
-        "$<$<CONFIG:Release>:-flto>"
-        "$<$<CONFIG:Release>:-Wno-unused>"
-        "$<$<CONFIG:Release>:-Wno-unused-parameter>"
-        "$<$<CONFIG:Release>:-fvisibility=hidden>"
-        "$<$<CONFIG:Release>:-fvisibility-inlines-hidden>"
-        "$<$<CONFIG:Release>:-fno-unwind-tables>"
-        "$<$<CONFIG:Release>:-fno-asynchronous-unwind-tables>"
-    )
-endfunction()
-
-omg_enable_release_size(common)
-omg_enable_release_size(zygisk)
-omg_enable_release_size(libzygisk_ptrace.so)
-
-# Linker-only options belong on final link steps, not compiler invocations.
-# Leave symbol stripping to AGP so its native debug-symbol handling remains intact.
-foreach(target zygisk libzygisk_ptrace.so)
-    target_link_options(${target} PRIVATE
-        "$<$<CONFIG:Release>:-flto>"
-        "$<$<CONFIG:Release>:-Wl,--exclude-libs,ALL>"
-        "$<$<CONFIG:Release>:-Wl,--gc-sections>"
-    )
-endforeach()
+add_subdirectory(external)
