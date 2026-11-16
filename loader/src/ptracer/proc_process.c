@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <sys/wait.h>
 
 ssize_t onyx_proc_read_exe(pid_t pid, char *buffer, size_t capacity) {
     if (pid <= 0 || buffer == NULL || capacity < 2) {
@@ -28,4 +29,12 @@ ssize_t onyx_proc_read_exe(pid_t pid, char *buffer, size_t capacity) {
 
     buffer[length] = '\0';
     return length;
+}
+
+pid_t onyx_waitpid_retry(pid_t pid, int *status, int options) {
+    pid_t result;
+    do {
+        result = waitpid(pid, status, options);
+    } while (result == -1 && errno == EINTR);
+    return result;
 }
