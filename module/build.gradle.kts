@@ -1,4 +1,3 @@
-import android.databinding.tool.ext.capitalizeUS
 import java.security.MessageDigest
 import org.apache.tools.ant.filters.ReplaceTokens
 
@@ -15,6 +14,7 @@ import java.security.interfaces.EdECPublicKey
 import java.security.spec.EdECPrivateKeySpec
 import java.security.spec.NamedParameterSpec
 import java.util.TreeSet
+import java.util.Locale
 
 plugins {
     alias(libs.plugins.agp.lib)
@@ -78,7 +78,7 @@ android {
 
 androidComponents.onVariants { variant ->
     val variantLowered = variant.name.lowercase()
-    val variantCapped = variant.name.capitalizeUS()
+    val variantCapped = variant.name.replaceFirstChar { it.uppercase(Locale.ROOT) }
     val buildTypeLowered = variant.buildType?.lowercase()
 
     val moduleDir = layout.buildDirectory.dir("outputs/module/$variantLowered")
