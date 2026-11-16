@@ -56,11 +56,12 @@ int omg_socket_write_usize(int fd, size_t value) {
 
 /* The wire format is shared with zygiskd; reject hostile lengths before allocation. */
 int omg_socket_read_string(int fd, char **out, size_t *out_length) {
-    const size_t length = omg_socket_read_usize(fd);
+    size_t length;
     char *value;
     if (out == NULL || out_length == NULL) return 0;
     *out = NULL;
     *out_length = 0;
+    length = omg_socket_read_usize(fd);
     if (length > 1024u * 1024u) {
         __android_log_print(ANDROID_LOG_ERROR, LOG_TAG,
                             "rejecting oversized IPC string (%zu bytes)", length);
