@@ -10,7 +10,7 @@
 extern "C" {
 #endif
 
-/* Rust-owned stream I/O and native-endian IPC primitives. */
+/* Rust-owned stream I/O and native-endian IPC primitives. */\nint32_t omg_loader_core_connect_unix(const char *path, uint8_t retries);
 ssize_t omg_loader_core_read_exact(int fd, uint8_t *buffer, size_t length);
 size_t omg_loader_core_write_exact(int fd, const uint8_t *buffer, size_t length);
 uint8_t omg_loader_core_read_u8(int fd);
