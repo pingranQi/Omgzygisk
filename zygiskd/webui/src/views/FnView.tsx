@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { formatVersion } from "../cli_parse";
 import { Card } from "../components/atoms/Card";
 import { SectionHeader } from "../components/molecules/SectionHeader";
 import {
@@ -8,7 +9,6 @@ import {
 } from "../components/molecules/SettingRow";
 import type { SnackbarTone } from "../components/molecules/Snackbar";
 import { cli } from "../state/app";
-import { formatVersion } from "../cli_parse";
 import { messageOf, type SystemSnapshot } from "../state/system";
 import { tr } from "../utils/tr";
 
