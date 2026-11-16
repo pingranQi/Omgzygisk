@@ -11,7 +11,7 @@ import {
 } from "../components/molecules/SettingRow";
 import type { SnackbarTone } from "../components/molecules/Snackbar";
 import { i18n } from "../i18n";
-import { MODULE_AUTHORS, MODULE_NAME } from "../module_info";
+import { MODULE_NAME } from "../module_info";
 import { cli } from "../state/app";
 import { messageOf, type SystemSnapshot } from "../state/system";
 import { tr } from "../utils/tr";
@@ -196,16 +196,8 @@ export function SettingsView({
 						<span className="text-onx-caption text-onx-muted">
 							{tr(
 								"settings_about_text",
-								"A Zygisk implementation via ptrace, with FN (Functional Node) modules. A fork of NeoZygisk.",
+								"An ARM64-first Zygisk runtime with Native ZN API and FN module support.",
 							)}
-						</span>
-					</div>
-					<div className="flex flex-col gap-1">
-						<span className="text-onx-caption text-onx-muted">
-							{tr("settings_authors", "Authors")}
-						</span>
-						<span className="text-onx-body-strong text-onx-on">
-							{MODULE_AUTHORS.join(" · ")}
 						</span>
 					</div>
 				</Card>
