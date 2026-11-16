@@ -20,7 +20,6 @@ pub unsafe extern "C" fn omg_monitor_state(handle: *const OmgMonitorHandle) -> u
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn omg_monitor_set_state(handle: *mut OmgMonitorHandle, state: u32) -> bool {
     let Some(handle) = (unsafe { handle.as_mut() }) else { return false; };
     handle.inner.state = match state { 1 => TracingState::Tracing, 2 => TracingState::Stopping, 3 => TracingState::Stopped, 4 => TracingState::Exiting, _ => return false };
     true
