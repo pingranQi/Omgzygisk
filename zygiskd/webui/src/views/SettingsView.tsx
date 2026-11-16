@@ -184,7 +184,7 @@ export function SettingsView({
 			<SectionHeader>{tr("settings_about_section", "About")}</SectionHeader>
 			<div className="px-4 pb-8">
 				<Card className="flex flex-col gap-4">
-					{/* The product name is fixed; descriptive copy is localized. */}}
+					{/* The product name is fixed; descriptive copy is localized. */}
 					<div className="flex flex-col gap-1">
 						<span className="text-onx-body-strong text-onx-on">
 							{MODULE_NAME}
