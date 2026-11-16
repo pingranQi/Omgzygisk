@@ -25,55 +25,44 @@
 #include <vector>
 
 #include "logging.hpp"
+#include "proc_maps.h"
 
 /**
  * @brief Scans and parses the /proc/[pid]/maps file for a given process.
  * @param pid The process ID to scan, as a string ("self" is also valid).
  * @return A vector of MapInfo structs, each representing a memory mapping.
  */
+namespace {
+struct MapScanContext {
+    std::vector<MapInfo> *entries;
+};
+
+int append_map_entry(const onyx_proc_map_entry *entry, void *opaque) {
+    auto *context = static_cast<MapScanContext *>(opaque);
+    MapInfo map{
+        entry->start,
+        entry->end,
+        0,
+        (entry->flags & ONYX_MAP_PRIVATE) != 0,
+        entry->offset,
+        static_cast<dev_t>(makedev(entry->dev_major, entry->dev_minor)),
+        static_cast<ino_t>(entry->inode),
+        std::string(entry->path, entry->path_length)
+    };
+    if (entry->flags & ONYX_MAP_READ) map.perms |= PROT_READ;
+    if (entry->flags & ONYX_MAP_WRITE) map.perms |= PROT_WRITE;
+    if (entry->flags & ONYX_MAP_EXEC) map.perms |= PROT_EXEC;
+    context->entries->emplace_back(std::move(map));
+    return 1;
+}
+}  // namespace
+
 std::vector<MapInfo> MapInfo::Scan(const std::string &pid) {
     std::vector<MapInfo> info;
-    std::string file_name = "/proc/" + pid + "/maps";
-    auto maps = std::unique_ptr<FILE, decltype(&fclose)>{fopen(file_name.c_str(), "r"), &fclose};
-
-    if (!maps) {
-        PLOGE("fopen %s", file_name.c_str());
-        return info;
+    MapScanContext context{&info};
+    if (onyx_proc_maps_scan(pid.c_str(), append_map_entry, &context) == -1) {
+        PLOGE("failed to scan /proc/%s/maps", pid.c_str());
     }
-
-    char *line = nullptr;
-    size_t len = 0;
-    while (getline(&line, &len, maps.get()) > 0) {
-        // Line format: start-end perms offset dev:minor inode pathname
-        uintptr_t start, end, off;
-        ino_t inode;
-        unsigned int dev_major, dev_minor;
-        std::array<char, 5> perm{};  // rwxp\0
-        int path_off;
-
-        if (sscanf(line, "%" PRIxPTR "-%" PRIxPTR " %4s %" PRIxPTR " %x:%x %lu %n", &start, &end,
-                   perm.data(), &off, &dev_major, &dev_minor, &inode, &path_off) != 7) {
-            continue;
-        }
-
-        // Find the start of the pathname, skipping spaces.
-        while (path_off > 0 && isspace(line[path_off])) {
-            path_off++;
-        }
-
-        // Trim trailing newline from path.
-        if (auto nl = strchr(line + path_off, '\n'); nl != nullptr) {
-            *nl = '\0';
-        }
-
-        auto &ref = info.emplace_back(MapInfo{start, end, 0, perm[3] == 'p', off,
-                                              static_cast<dev_t>(makedev(dev_major, dev_minor)),
-                                              inode, line + path_off});
-        if (perm[0] == 'r') ref.perms |= PROT_READ;
-        if (perm[1] == 'w') ref.perms |= PROT_WRITE;
-        if (perm[2] == 'x') ref.perms |= PROT_EXEC;
-    }
-    free(line);
     return info;
 }
 
