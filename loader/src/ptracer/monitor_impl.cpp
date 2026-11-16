@@ -222,7 +222,7 @@ void AppMonitor::request_start() {
     else if (get_tracing_state() == STOPPED) {
         ptrace(PTRACE_SEIZE, 1, 0, PTRACE_O_TRACEFORK);
         LOGI("start tracing init");
-        set_tracing_state(TRACING);
+        omg_monitor_request_start(rust_monitor_);
     }
     update_status();
 }
