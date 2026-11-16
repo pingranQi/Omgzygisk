@@ -14,7 +14,7 @@ export type BridgeHost = "ksu" | "mmrl" | "dev";
  * The single seam between application code and the host WebView bridge.
  *
  * Production resolves it to `kernelsu-alt` (KernelSU and APatch inject the
- * same `window.ksu` object) or to the MMRL adapter, because OnyxZygisk ships
+ * same `window.ksu` object) or to the MMRL adapter, because OmgZygisk ships
  * to all three hosts. Tests install a fake through `setBridge()` so no spec
  * needs a real device.
  */
