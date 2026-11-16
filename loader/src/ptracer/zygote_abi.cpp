@@ -8,6 +8,7 @@
 #include "daemon.hpp"
 #include "logging.hpp"
 #include "monitor.hpp"
+#include "omg_loader_core.h"
 #include "utils.hpp"
 
 ZygoteAbiManager::ZygoteAbiManager(AppMonitor& monitor, bool is_64bit)
