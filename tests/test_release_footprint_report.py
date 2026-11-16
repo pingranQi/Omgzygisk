@@ -24,6 +24,11 @@ class ReleaseFootprintReportTests(unittest.TestCase):
         self.assertEqual(REPORT.human(1024), "1.00 KiB")
         self.assertEqual(REPORT.human(1024 * 1024), "1.00 MiB")
 
+    def test_abi_detection_supports_directory_and_filename_layouts(self) -> None:
+        self.assertEqual(REPORT.abi_for("lib/arm64-v8a/libexample.so"), "arm64-v8a")
+        self.assertEqual(REPORT.abi_for("zygisk/arm64-v8a.so"), "arm64-v8a")
+        self.assertEqual(REPORT.abi_for("assets/readme.txt"), "shared / unclassified")
+
     def test_main_reports_archive_and_native_payload(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             archive_path = Path(directory) / "module.zip"
