@@ -221,31 +221,100 @@ pub unsafe extern "C" fn omg_loader_core_validate_control_packet(
 }
 
 
-/// Validate an ELF64 little-endian AArch64 shared-object header and table bounds.
+/// Validate ELF64 little-endian AArch64 ET_DYN metadata before C++ maps sections.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn omg_loader_core_validate_elf64_aarch64(data: *const u8, length: usize) -> bool {
-    if data.is_null() || length < 64 { return false; }
-    // SAFETY: caller provides length readable bytes; the minimum is checked above.
+    const EHDR: usize = 64;
+    const PHDR: usize = 56;
+    const SHDR: usize = 64;
+    const SYM: usize = 24;
+    if data.is_null() || length < EHDR { return false; }
+    // SAFETY: caller provides length readable bytes; null and minimum size are checked.
     let b = unsafe { std::slice::from_raw_parts(data, length) };
     if &b[0..4] != b"\x7fELF" || b[4] != 2 || b[5] != 1 || b[6] != 1
         || u16::from_le_bytes([b[16], b[17]]) != 3
         || u16::from_le_bytes([b[18], b[19]]) != 183
         || u32::from_le_bytes(b[20..24].try_into().unwrap()) != 1
-        || u16::from_le_bytes([b[52], b[53]]) != 64
+        || u16::from_le_bytes([b[52], b[53]]) as usize != EHDR
     { return false; }
+
     let phoff = u64::from_le_bytes(b[32..40].try_into().unwrap());
     let shoff = u64::from_le_bytes(b[40..48].try_into().unwrap());
-    let phentsize = u16::from_le_bytes([b[54], b[55]]);
-    let phnum = u16::from_le_bytes([b[56], b[57]]);
-    let shentsize = u16::from_le_bytes([b[58], b[59]]);
-    let shnum = u16::from_le_bytes([b[60], b[61]]);
-    let shstrndx = u16::from_le_bytes([b[62], b[63]]);
-    if phentsize != 56 || shentsize != 64 || shnum == 0 || shstrndx >= shnum {
-        return false;
+    let phentsize = u16::from_le_bytes([b[54], b[55]]) as usize;
+    let phnum = u16::from_le_bytes([b[56], b[57]]) as usize;
+    let shentsize = u16::from_le_bytes([b[58], b[59]]) as usize;
+    let shnum = u16::from_le_bytes([b[60], b[61]]) as usize;
+    let shstrndx = u16::from_le_bytes([b[62], b[63]]) as usize;
+
+    let range_ok = |offset: u64, size: u64| -> bool {
+        offset.checked_add(size).is_some_and(|end| end <= length as u64)
+    };
+    if phentsize != PHDR || shentsize != SHDR || shnum == 0 || shstrndx >= shnum
+        || !range_ok(phoff, (PHDR as u64).saturating_mul(phnum as u64))
+        || !range_ok(shoff, (SHDR as u64).saturating_mul(shnum as u64))
+    { return false; }
+
+    let sh_start = shoff as usize;
+    let shdr = |index: usize| -> &[u8] {
+        let start = sh_start + index * SHDR;
+        &b[start..start + SHDR]
+    };
+    let shstr = shdr(shstrndx);
+    let shstr_type = u32::from_le_bytes(shstr[4..8].try_into().unwrap());
+    let shstr_off = u64::from_le_bytes(shstr[24..32].try_into().unwrap());
+    let shstr_size = u64::from_le_bytes(shstr[32..40].try_into().unwrap());
+    if shstr_type != 3 || !range_ok(shstr_off, shstr_size) { return false; }
+    let names = &b[shstr_off as usize..(shstr_off + shstr_size) as usize];
+
+    for index in 0..shnum {
+        let s = shdr(index);
+        let name_off = u32::from_le_bytes(s[0..4].try_into().unwrap()) as usize;
+        let kind = u32::from_le_bytes(s[4..8].try_into().unwrap());
+        let offset = u64::from_le_bytes(s[24..32].try_into().unwrap());
+        let size = u64::from_le_bytes(s[32..40].try_into().unwrap());
+        let link = u32::from_le_bytes(s[40..44].try_into().unwrap()) as usize;
+        let entsize = u64::from_le_bytes(s[56..64].try_into().unwrap());
+        if name_off >= names.len() || !names[name_off..].contains(&0) { return false; }
+        // SHT_NOBITS has no corresponding file payload.
+        if kind != 8 && !range_ok(offset, size) { return false; }
+        if kind == 2 || kind == 11 {
+            if entsize != SYM as u64 || size % SYM as u64 != 0 || link >= shnum { return false; }
+            let linked = shdr(link);
+            if u32::from_le_bytes(linked[4..8].try_into().unwrap()) != 3 { return false; }
+            let str_off = u64::from_le_bytes(linked[24..32].try_into().unwrap());
+            let str_size = u64::from_le_bytes(linked[32..40].try_into().unwrap());
+            if !range_ok(str_off, str_size) { return false; }
+            let strings = &b[str_off as usize..(str_off + str_size) as usize];
+            let sym_count = (size / SYM as u64) as usize;
+            let sym_start = offset as usize;
+            for sym_index in 0..sym_count {
+                let name = u32::from_le_bytes(
+                    b[sym_start + sym_index * SYM..sym_start + sym_index * SYM + 4]
+                        .try_into().unwrap()
+                ) as usize;
+                if name >= strings.len() || !strings[name..].contains(&0) { return false; }
+            }
+        }
+        if kind == 5 {
+            if size < 8 { return false; }
+            let hash = &b[offset as usize..(offset + size) as usize];
+            let buckets = u32::from_le_bytes(hash[0..4].try_into().unwrap()) as u64;
+            let chains = u32::from_le_bytes(hash[4..8].try_into().unwrap()) as u64;
+            if 8u64.checked_add(4 * (buckets + chains)).is_none_or(|required| required > size) {
+                return false;
+            }
+        }
+        if kind == 0x6ffffff6 {
+            if size < 16 { return false; }
+            let hash = &b[offset as usize..(offset + size) as usize];
+            let buckets = u32::from_le_bytes(hash[0..4].try_into().unwrap()) as u64;
+            let bloom = u32::from_le_bytes(hash[8..12].try_into().unwrap()) as u64;
+            if bloom == 0 || buckets == 0
+                || 16u64.checked_add(8 * bloom + 4 * buckets).is_none_or(|required| required > size)
+            { return false; }
+        }
     }
-    let ph_end = phoff.checked_add(u64::from(phentsize) * u64::from(phnum));
-    let sh_end = shoff.checked_add(u64::from(shentsize) * u64::from(shnum));
-    matches!((ph_end, sh_end), (Some(p), Some(s)) if p <= length as u64 && s <= length as u64)
+    true
 }
 
 #[cfg(test)]
