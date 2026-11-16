@@ -14,7 +14,7 @@ jobs:
         run: python3 loader/src/injector/test_jni_hooks.py
 
   rustcore:
-    name: Rust core tests
+    name: Rust core tests and static library
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,7 +23,10 @@ jobs:
           toolchain: 1.85.0
       - name: Run Rust loader-core tests
         working-directory: loader/rustcore
-        run: cargo test
+        run: cargo test --locked
+      - name: Build Rust loader-core static library
+        working-directory: loader/rustcore
+        run: cargo build --release --locked
 
   webui:
     name: WebUI checks
@@ -43,8 +46,6 @@ jobs:
       - name: Install dependencies
         working-directory: zygiskd/webui
         run: pnpm install --frozen-lockfile
-      # biome ci, not pnpm lint: the lint script rewrites files, which a check
-      # job must never do.
       - name: Format and lint
         working-directory: zygiskd/webui
         run: pnpm check:biome

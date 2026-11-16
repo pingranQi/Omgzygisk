@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22.1)
 project("loader" C CXX)
 
-set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD 20)
 
 # Optional host-side validation for the platform-independent Rust loader
 # primitives. The Rust core is not linked into the Android runtime yet:
@@ -19,12 +19,12 @@ endif()
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-add_definitions(-DZKSU_VERSION=\"${ZKSU_VERSION}\")
+add_definitions(-DZKSU_VERSION=\\\"\${ZKSU_VERSION}\\\")
 
 # The work directory comes in as a plain CMake variable from the Gradle build
 # (-DWORK_DIRECTORY=...); the escaped quotes produce a C string literal.
 # Quoting inside the Gradle cFlags is fragile across host OSes.
-add_definitions(-DWORK_DIRECTORY=\"${WORK_DIRECTORY}\")
+add_definitions(-DWORK_DIRECTORY=\\\"\${WORK_DIRECTORY}\\\")
 
 aux_source_directory(common COMMON_SRC_LIST)
 add_library(common STATIC ${COMMON_SRC_LIST})
