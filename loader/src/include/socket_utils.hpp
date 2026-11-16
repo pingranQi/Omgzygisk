@@ -27,7 +27,7 @@ inline std::string read_string(int fd) {
         shutdown(fd, SHUT_RDWR);
         return {};
     }
-    std::string value(length, '\\0');
+    std::string value(length, '\0');
     if (length != 0 && xread(fd, value.data(), length) != static_cast<ssize_t>(length)) {
         shutdown(fd, SHUT_RDWR);
         return {};
