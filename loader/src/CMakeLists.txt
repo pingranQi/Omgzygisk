@@ -50,8 +50,8 @@ add_definitions(-DWORK_DIRECTORY=\"${WORK_DIRECTORY}\")
 
 aux_source_directory(common COMMON_SRC_LIST)
 add_library(common STATIC ${COMMON_SRC_LIST})
-target_include_directories(common PRIVATE include)
-target_link_libraries(common log)
+target_include_directories(common PRIVATE include ../rustcore/include)
+target_link_libraries(common log omg_rust_core)
 
 aux_source_directory(injector INJECTOR_SRC_LIST)
 # Explicitly list files that aux_source_directory may miss on incremental
