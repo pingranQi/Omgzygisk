@@ -1,15 +1,15 @@
 # Rust loader core
 
-Platform-independent primitives extracted from the former Zig core prototype.
-The crate contains bounded IPC decoding/encoding, monitor-control packet
-validation, descriptor ownership, and a small monitor lifecycle state machine.
+This crate is the platform-independent state and protocol core used by the ARM64 native monitor adapter.
 
-This crate deliberately performs no socket I/O, ptrace calls, Android linker
-operations, JNI work, or mount-namespace changes. Those platform operations
-remain outside this host-testable layer. It is not linked into the Android
-shared libraries yet.
+It owns bounded IPC/control packet parsing, daemon action discriminants, descriptor ownership primitives, and the monitor lifecycle state machine. The monitor state is exposed to the C adapter through the small ABI in `src/ffi.rs`; Android syscalls, ptrace, linker operations, JNI, and hook execution remain in the native platform layer.
 
-Run the tests with cargo test.
+The Android ARM64 build compiles this crate as a static library and links it into `libzygisk_ptrace.so`. The crate is also host-testable and must remain free of Android-only dependencies.
 
-CMake can expose the same host-side check with
--DONYX_BUILD_RUSTCORE_TESTS=ON.
+Run the tests with:
+
+```sh
+cargo test
+```
+
+The Android build requires the Rust target `aarch64-linux-android` to be installed.

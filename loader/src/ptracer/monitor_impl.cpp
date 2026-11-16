@@ -86,14 +86,16 @@ AppMonitor::AppMonitor()
 #else
       zygote_(*this, false),
 #endif
-      tracing_state_(TRACING) {
+      rust_monitor_(omg_monitor_create()) {
 }
 
 ZygoteAbiManager &AppMonitor::get_abi_manager() { return zygote_; }
 
-TracingState AppMonitor::get_tracing_state() const { return tracing_state_; }
+TracingState AppMonitor::get_tracing_state() const {
+    return static_cast<TracingState>(omg_monitor_state(rust_monitor_));
+}
 
-void AppMonitor::set_tracing_state(TracingState state) { tracing_state_ = state; }
+AppMonitor::~AppMonitor() { omg_monitor_destroy(rust_monitor_); }
 
 void AppMonitor::write_abi_status_section(std::string &status_text, const Status &daemon_status) {
     auto abi_name = this->zygote_.abi_name_;
@@ -101,7 +103,7 @@ void AppMonitor::write_abi_status_section(std::string &status_text, const Status
         status_text += "\tzygote";
         status_text += abi_name;
         status_text += ":";
-        if (tracing_state_ != TRACING)
+        if (get_tracing_state() != TRACING)
             status_text += "\tunknown";
         else if (daemon_status.zygote_injected)
             status_text += "\tinjected";
@@ -136,7 +138,7 @@ void AppMonitor::update_status() {
 
     // Build the middle section of the status text.
     std::string status_text = "\tmonitor: \t";
-    switch (tracing_state_) {
+    switch (get_tracing_state()) {
     case TRACING:
         status_text += "tracing";
         break;
@@ -149,7 +151,7 @@ void AppMonitor::update_status() {
         status_text += "exited";
         break;
     }
-    if (tracing_state_ != TRACING && !monitor_stop_reason_.empty()) {
+    if (get_tracing_state() != TRACING && !monitor_stop_reason_.empty()) {
         status_text += "(";
         status_text += monitor_stop_reason_;
         status_text += ")";
@@ -215,20 +217,20 @@ void AppMonitor::run() {
 }
 
 void AppMonitor::request_start() {
-    if (tracing_state_ == STOPPING)
-        tracing_state_ = TRACING;
-    else if (tracing_state_ == STOPPED) {
+    if (get_tracing_state() == STOPPING)
+        omg_monitor_request_start(rust_monitor_);
+    else if (get_tracing_state() == STOPPED) {
         ptrace(PTRACE_SEIZE, 1, 0, PTRACE_O_TRACEFORK);
         LOGI("start tracing init");
-        tracing_state_ = TRACING;
+        omg_monitor_request_start(rust_monitor_);
     }
     update_status();
 }
 
 void AppMonitor::request_stop(std::string reason) {
-    if (tracing_state_ == TRACING) {
+    if (get_tracing_state() == TRACING) {
         LOGI("stop tracing requested");
-        tracing_state_ = STOPPING;
+        omg_monitor_request_stop(rust_monitor_);
         monitor_stop_reason_ = std::move(reason);
         ptrace(PTRACE_INTERRUPT, 1, 0, 0);
         update_status();
@@ -237,14 +239,14 @@ void AppMonitor::request_stop(std::string reason) {
 
 void AppMonitor::request_exit() {
     LOGI("prepare for exit ...");
-    tracing_state_ = EXITING;
+    omg_monitor_request_exit(rust_monitor_);
     monitor_stop_reason_ = "user requested";
     update_status();
     event_loop_.Stop();
 }
 
 void AppMonitor::notify_init_detached() {
-    tracing_state_ = STOPPED;
+    omg_monitor_notify_detached(rust_monitor_);
     LOGI("stop tracing init");
 }
 

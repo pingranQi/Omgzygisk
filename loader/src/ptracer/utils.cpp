@@ -25,55 +25,46 @@
 #include <vector>
 
 #include "logging.hpp"
+#include "proc_maps.h"
+#include "proc_process.h"
+#include "proc_memory.h"
 
 /**
  * @brief Scans and parses the /proc/[pid]/maps file for a given process.
  * @param pid The process ID to scan, as a string ("self" is also valid).
  * @return A vector of MapInfo structs, each representing a memory mapping.
  */
+namespace {
+struct MapScanContext {
+    std::vector<MapInfo> *entries;
+};
+
+int append_map_entry(const onyx_proc_map_entry *entry, void *opaque) {
+    auto *context = static_cast<MapScanContext *>(opaque);
+    MapInfo map{
+        entry->start,
+        entry->end,
+        0,
+        (entry->flags & ONYX_MAP_PRIVATE) != 0,
+        entry->offset,
+        static_cast<dev_t>(makedev(entry->dev_major, entry->dev_minor)),
+        static_cast<ino_t>(entry->inode),
+        std::string(entry->path, entry->path_length)
+    };
+    if (entry->flags & ONYX_MAP_READ) map.perms |= PROT_READ;
+    if (entry->flags & ONYX_MAP_WRITE) map.perms |= PROT_WRITE;
+    if (entry->flags & ONYX_MAP_EXEC) map.perms |= PROT_EXEC;
+    context->entries->emplace_back(std::move(map));
+    return 1;
+}
+}  // namespace
+
 std::vector<MapInfo> MapInfo::Scan(const std::string &pid) {
     std::vector<MapInfo> info;
-    std::string file_name = "/proc/" + pid + "/maps";
-    auto maps = std::unique_ptr<FILE, decltype(&fclose)>{fopen(file_name.c_str(), "r"), &fclose};
-
-    if (!maps) {
-        PLOGE("fopen %s", file_name.c_str());
-        return info;
+    MapScanContext context{&info};
+    if (onyx_proc_maps_scan(pid.c_str(), append_map_entry, &context) == -1) {
+        PLOGE("failed to scan /proc/%s/maps", pid.c_str());
     }
-
-    char *line = nullptr;
-    size_t len = 0;
-    while (getline(&line, &len, maps.get()) > 0) {
-        // Line format: start-end perms offset dev:minor inode pathname
-        uintptr_t start, end, off;
-        ino_t inode;
-        unsigned int dev_major, dev_minor;
-        std::array<char, 5> perm{};  // rwxp\0
-        int path_off;
-
-        if (sscanf(line, "%" PRIxPTR "-%" PRIxPTR " %4s %" PRIxPTR " %x:%x %lu %n", &start, &end,
-                   perm.data(), &off, &dev_major, &dev_minor, &inode, &path_off) != 7) {
-            continue;
-        }
-
-        // Find the start of the pathname, skipping spaces.
-        while (path_off > 0 && isspace(line[path_off])) {
-            path_off++;
-        }
-
-        // Trim trailing newline from path.
-        if (auto nl = strchr(line + path_off, '\n'); nl != nullptr) {
-            *nl = '\0';
-        }
-
-        auto &ref = info.emplace_back(MapInfo{start, end, 0, perm[3] == 'p', off,
-                                              static_cast<dev_t>(makedev(dev_major, dev_minor)),
-                                              inode, line + path_off});
-        if (perm[0] == 'r') ref.perms |= PROT_READ;
-        if (perm[1] == 'w') ref.perms |= PROT_WRITE;
-        if (perm[2] == 'x') ref.perms |= PROT_EXEC;
-    }
-    free(line);
     return info;
 }
 
@@ -82,13 +73,7 @@ std::vector<MapInfo> MapInfo::Scan(const std::string &pid) {
  * @return The number of bytes written, or -1 on error.
  */
 ssize_t write_proc(int pid, uintptr_t remote_addr, const void *buf, size_t len) {
-    // The iovec struct's iov_base is a non-const void*, so we must cast away constness.
-    // This is safe as process_vm_writev treats the local iovec as a source.
-    struct iovec local{.iov_base = const_cast<void *>(buf), .iov_len = len};
-    struct iovec remote{.iov_base = (void *) remote_addr, .iov_len = len};
-
-    ssize_t bytes_written = process_vm_writev(pid, &local, 1, &remote, 1, 0);
-
+    const ssize_t bytes_written = onyx_proc_write_memory(pid, remote_addr, buf, len);
     if (bytes_written == -1) {
         PLOGE("process_vm_writev to addr 0x%" PRIxPTR, remote_addr);
     } else if (static_cast<size_t>(bytes_written) != len) {
@@ -98,16 +83,8 @@ ssize_t write_proc(int pid, uintptr_t remote_addr, const void *buf, size_t len) 
     return bytes_written;
 }
 
-/**
- * @brief Reads data from another process's memory using process_vm_readv.
- * @return The number of bytes read, or -1 on error.
- */
 ssize_t read_proc(int pid, uintptr_t remote_addr, void *buf, size_t len) {
-    struct iovec local{.iov_base = buf, .iov_len = len};
-    struct iovec remote{.iov_base = (void *) remote_addr, .iov_len = len};
-
-    ssize_t bytes_read = process_vm_readv(pid, &local, 1, &remote, 1, 0);
-
+    const ssize_t bytes_read = onyx_proc_read_memory(pid, remote_addr, buf, len);
     if (bytes_read == -1) {
         PLOGE("process_vm_readv from addr 0x%" PRIxPTR, remote_addr);
     } else if (static_cast<size_t>(bytes_read) != len) {
@@ -458,7 +435,7 @@ int fork_dont_care() {
         // second child (the daemon) continues in the background. It then returns
         // the PID of the child it forked, signaling to the caller that it is the parent.
         int status;
-        waitpid(pid, &status, __WALL);
+        onyx_waitpid_retry(pid, &status, __WALL);
         return pid;
     }
 
@@ -544,11 +521,11 @@ void tracee_skip_syscall(int pid) {
  */
 void wait_for_trace(int pid, int *status, int flags) {
     while (true) {
-        if (waitpid(pid, status, flags) == -1) {
+        if (onyx_waitpid_retry(pid, status, flags) == -1) {
             if (errno == EINTR) {
                 continue;  // Interrupted by a signal, just retry.
             }
-            PLOGE("waitpid(%d)", pid);
+            PLOGE("onyx_waitpid_retry(%d)", pid);
             exit(1);
         }
 
@@ -593,18 +570,13 @@ std::string parse_status(int status) {
  * @return The path to the executable, or an empty string on failure.
  */
 std::string get_program(int pid) {
-    std::string path = "/proc/";
-    path += std::to_string(pid);
-    path += "/exe";
-    constexpr const auto SIZE = 256;
-    char buf[SIZE + 1];
-    auto sz = readlink(path.c_str(), buf, SIZE);
-    if (sz == -1) {
+    std::array<char, 4096> path{};
+    const ssize_t length = onyx_proc_read_exe(pid, path.data(), path.size());
+    if (length < 0) {
         PLOGE("readlink /proc/%d/exe", pid);
         return "";
     }
-    buf[sz] = 0;
-    return buf;
+    return std::string(path.data(), static_cast<size_t>(length));
 }
 
 // --- Raw remote syscall primitive ---------------------------------------------
@@ -674,9 +646,9 @@ uintptr_t find_syscall_gadget(int pid, const std::vector<MapInfo> &remote_info) 
 
 bool wait_for_ptrace_syscall_stop(int pid, int *status) {
     while (true) {
-        if (waitpid(pid, status, __WALL) == -1) {
+        if (onyx_waitpid_retry(pid, status, __WALL) == -1) {
             if (errno == EINTR) continue;
-            PLOGE("waitpid(%d) awaiting syscall-stop", pid);
+            PLOGE("onyx_waitpid_retry(%d) awaiting syscall-stop", pid);
             return false;
         }
         if (WIFEXITED(*status) || WIFSIGNALED(*status)) {

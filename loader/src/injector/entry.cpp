@@ -25,12 +25,9 @@ void entry(void* addr, size_t size, const char* path, bool custom_loaded) {
     // Native ZN manifests may also target the Zygote executable itself.
     zn::loadAllModules();
 
-    // Kernel-level TracerPid cleanup: install a one-shot seccomp BPF filter
-    // that triggers PTRACE_EVENT_SECCOMP, which the kernel consumes silently
-    // (no tracer attached) and in doing so clears any lingering ptrace state
-    // the injector left behind. On kernels >= 5.10 this is a no-op.
+    // Run the single C implementation of the seccomp-based TracerPid cleanup.
+    // It skips kernels where the Seccomp_filters field makes this method visible.
     perform_ptrace_message_clear();
-    send_seccomp_event_if_needed();
 }
 
 /* Exec-time bootstrap used for Native ZN targets outside the Zygote tree. */
@@ -53,7 +50,6 @@ void zn_entry(void*, size_t, const char* path, bool) {
     // Keep Native ZN exec-time injection on the same tracer-cleanup path as
     // the classic Zygisk bootstrap.
     perform_ptrace_message_clear();
-    send_seccomp_event_if_needed();
 }
 
 /**

@@ -3,7 +3,11 @@
 #include <dirent.h>
 
 #include <functional>
+#include <memory>
 #include <string>
+#include <string_view>
+
+#include "files.h"
 
 void file_readline(bool trim, FILE *fp, const std::function<bool(std::string_view)> &fn);
 void file_readline(bool trim, const char *file, const std::function<bool(std::string_view)> &fn);

@@ -7,6 +7,7 @@
 #include "event_loop.hpp"
 #include "main.hpp"
 #include "types.hpp"
+#include "rust_monitor.h"
 #include "zygote_abi.hpp"
 
 // Helper to check ptrace status.
@@ -107,6 +108,7 @@ public:
     static constexpr char SOCKET_NAME[] = "init_monitor";
 
     AppMonitor();
+    ~AppMonitor();
 
     // Public Lifecycle Methods
     bool prepare_environment();
@@ -167,7 +169,6 @@ private:
         std::set<pid_t> stub_processes_;
     };
 
-    void set_tracing_state(TracingState state);
     void write_abi_status_section(std::string &status_text, const Status &daemon_status);
 
     // Owned Components (Declaration order must match initializer list)
@@ -177,7 +178,7 @@ private:
     ZygoteAbiManager zygote_;
 
     // Private State
-    TracingState tracing_state_;
+    OmgMonitorHandle *rust_monitor_ = nullptr;
     std::string monitor_stop_reason_;
     std::string prop_path_;
     std::string pre_section_;
