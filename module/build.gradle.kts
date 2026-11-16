@@ -108,9 +108,12 @@ androidComponents.onVariants { variant ->
             )
             filter<FixCrLfFilter>("eol" to FixCrLfFilter.CrLf.newInstance("lf"))
         }
-        // Binary assets are copied verbatim (no filtering).
+        // Binary assets are copied verbatim (no filtering). The source banner
+        // is not declared in module.prop or referenced by install/runtime scripts,
+        // so keep it in the repository but out of the distributable ZIP.
         from("$projectDir/src") {
             include("**/*.png", "**/*.jpg", "**/*.jpeg", "**/*.webp", "**/*.gif", "**/*.ico")
+            exclude("banner.png")
         }
         from("$projectDir/src") {
             include("module.prop")

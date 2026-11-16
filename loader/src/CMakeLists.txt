@@ -55,6 +55,9 @@ if(CMAKE_BUILD_TYPE MATCHES "^(Release|RelWithDebInfo)$")
     add_compile_options(
         "$<$<COMPILE_LANGUAGE:C,CXX>:-Oz>"
         "$<$<COMPILE_LANGUAGE:C,CXX>:-flto>"
+        "$<$<COMPILE_LANGUAGE:C,CXX>:-ffunction-sections>"
+        "$<$<COMPILE_LANGUAGE:C,CXX>:-fdata-sections>"
+        "$<$<COMPILE_LANGUAGE:C,CXX>:-fno-ident>"
         "$<$<COMPILE_LANGUAGE:C,CXX>:-Wno-unused>"
         "$<$<COMPILE_LANGUAGE:C,CXX>:-Wno-unused-parameter>"
         "$<$<COMPILE_LANGUAGE:C,CXX>:-fvisibility=hidden>"
@@ -68,26 +71,29 @@ if(CMAKE_BUILD_TYPE MATCHES "^(Release|RelWithDebInfo)$")
         -flto
         -Wl,--exclude-libs,ALL
         -Wl,--gc-sections
+        -Wl,--icf=safe
     )
 endif()
 
-aux_source_directory(common COMMON_SRC_LIST)
+# CONFIGURE_DEPENDS makes source additions/removals trigger a CMake reconfigure.
+# Keep the source lists deterministic and avoid manually appending files that
+# are already discovered by the directory scan.
+file(GLOB COMMON_SRC_LIST CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/common/*.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/common/*.cpp")
 add_library(common STATIC ${COMMON_SRC_LIST})
 target_include_directories(common PRIVATE include ../rustcore/include)
 target_link_libraries(common log omg_rust_core)
 
-aux_source_directory(injector INJECTOR_SRC_LIST)
-# Explicitly list files that aux_source_directory may miss on incremental
-# reconfigures (CMake only rescans the dir at configure time, and Gradle's
-# Android plugin does not always reconfigure when a file is added).
-list(APPEND INJECTOR_SRC_LIST
-    ${CMAKE_CURRENT_SOURCE_DIR}/injector/ptrace_clear.cpp)
+file(GLOB INJECTOR_SRC_LIST CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/injector/*.cpp")
 add_library(zygisk SHARED ${INJECTOR_SRC_LIST})
 target_compile_options(zygisk PRIVATE -Wno-invalid-offsetof -Wno-unused-private-field)
 target_include_directories(zygisk PRIVATE include external/dobby/include)
 target_link_libraries(zygisk log common lsplt_static csoloader dobby)
 
-aux_source_directory(ptracer PTRACER_SRC_LIST)
+file(GLOB PTRACER_SRC_LIST CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/ptracer/*.cpp")
 add_executable(libzygisk_ptrace.so ${PTRACER_SRC_LIST})
 target_include_directories(libzygisk_ptrace.so PRIVATE include ../rustcore/include)
 target_link_libraries(libzygisk_ptrace.so log common omg_rust_core dl m)

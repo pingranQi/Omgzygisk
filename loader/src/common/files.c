@@ -31,7 +31,7 @@ void omg_file_readline(FILE *stream, int trim, omg_file_line_callback callback, 
         }
 
         buffer[line_length] = '\0';
-        if (!callback(buffer + start, strlen(buffer + start), context)) {
+        if (!callback(buffer + start, (line_length - start), context)) {
             break;
         }
     }
