@@ -25,45 +25,6 @@ int Connect(uint8_t retry) {
         return -1;
     }
     return result;
-}include "daemon.hpp"
-
-#include <linux/un.h>
-#include <sys/socket.h>
-#include <unistd.h>
-
-#include "logging.hpp"\n#include "omg_loader_core.h"
-#include "socket_utils.hpp"
-
-namespace zygiskd {
-static std::string TMP_PATH;
-
-void Init(const char *path) {
-    TMP_PATH = path;
-}
-
-std::string GetTmpPath() { return TMP_PATH; }
-
-int Connect(uint8_t retry) {
-    int fd = socket(PF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-    struct sockaddr_un addr{
-        .sun_family = AF_UNIX,
-        .sun_path = {0},
-    };
-    auto socket_path = GetTmpPath() + kCPSocketName;
-    strcpy(addr.sun_path, socket_path.c_str());
-    socklen_t socklen = sizeof(addr);
-
-    while (retry--) {
-        int r = connect(fd, reinterpret_cast<struct sockaddr *>(&addr), socklen);
-        if (r == 0) return fd;
-        if (retry) {
-            LOGW("retrying to connect to zygiskd, sleep 1s");
-            sleep(1);
-        }
-    }
-
-    close(fd);
-    return -1;
 }
 
 bool PingHeartbeat() {
