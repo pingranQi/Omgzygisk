@@ -16,7 +16,7 @@
  * source).
  */
 
-#include <dlfcn.h>
+#include "module_loader_c.h"
 
 struct LoadedModule {
     /// Opaque handle for symbol lookups and, eventually, unloading.
@@ -44,8 +44,12 @@ struct LoadedModule {
  * @param entry_symbol Exported symbol to resolve.
  * @return The handle + resolved symbol; falsy if loading or lookup fails.
  */
-LoadedModule LoadModuleFromMemfd(int memfd,
-                                 const char *entry_symbol = "zygisk_module_entry");
+inline LoadedModule LoadModuleFromMemfd(int memfd,
+                                       const char *entry_symbol = "zygisk_module_entry") {
+    omg_loaded_module result{};
+    if (!omg_module_load(memfd, entry_symbol, &result)) return {};
+    return {result.handle, result.entry, result.custom != 0};
+}
 
 /**
  * @brief Unload a module handle previously returned by LoadModuleFromMemfd.
@@ -59,7 +63,9 @@ LoadedModule LoadModuleFromMemfd(int memfd,
  * @param custom LoadedModule::custom from the same load.
  * @return true on success.
  */
-bool UnloadModule(void *handle, bool custom);
+inline bool UnloadModule(void *handle, bool custom) {
+    return omg_module_unload(handle, custom ? 1 : 0) != 0;
+}
 
 /**
  * @brief Tear down the custom loader's process-wide global state.
@@ -71,7 +77,9 @@ bool UnloadModule(void *handle, bool custom);
  * asked to unload — the common case) would depend on, so calling it early
  * corrupts that module's state instead of merely leaking memory.
  */
-void DeinitCustomLoaderIfUsed();
+inline void DeinitCustomLoaderIfUsed() {
+    omg_module_deinit_custom_loader();
+}
 
 /**
  * @brief Pin CSOLoader's process-wide state until process exit.
@@ -81,4 +89,6 @@ void DeinitCustomLoaderIfUsed();
  * must not tear down the shared TLS/runtime state while the ZN module remains
  * mapped and may still use it.
  */
-void RetainCustomLoaderForProcessLifetime();
+inline void RetainCustomLoaderForProcessLifetime() {
+    omg_module_retain_custom_loader();
+}
