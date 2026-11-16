@@ -4,7 +4,8 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-#include "logging.hpp"\n#include "omg_loader_core.h"
+#include "logging.hpp"
+#include "omg_loader_core.h"
 #include "socket_utils.hpp"
 
 namespace zygiskd {
