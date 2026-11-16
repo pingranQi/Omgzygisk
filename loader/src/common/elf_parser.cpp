@@ -1,4 +1,5 @@
 #include "elf_parser.hpp"
+#include "omg_loader_core.h"
 
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -36,6 +37,10 @@ ElfImage::ElfImage(std::string_view library_name, void *base_address) {
         close(fd);
         return;
     }
+    if (file_stat.st_size < 64) {
+        close(fd);
+        return;
+    }
     map_size_ = file_stat.st_size;
 
     map_base_ = mmap(nullptr, map_size_, PROT_READ, MAP_SHARED, fd, 0);
@@ -43,6 +48,14 @@ ElfImage::ElfImage(std::string_view library_name, void *base_address) {
 
     if (map_base_ == MAP_FAILED) {
         map_base_ = nullptr;
+        return;
+    }
+
+    if (!omg_loader_core_validate_elf64_aarch64(
+            static_cast<const uint8_t*>(map_base_), static_cast<size_t>(map_size_))) {
+        munmap(map_base_, map_size_);
+        map_base_ = nullptr;
+        map_size_ = 0;
         return;
     }
 
