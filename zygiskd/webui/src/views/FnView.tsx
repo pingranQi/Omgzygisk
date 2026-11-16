@@ -25,7 +25,7 @@ function statusLabel(status: string): string {
 		case "disabled":
 			return tr("common_disabled", "Disabled");
 		case "pending_remove":
-			return "Pending removal";
+			return tr("fn_pending_remove", "Pending removal");
 		default:
 			return status || tr("common_not_available", "Not available");
 	}
