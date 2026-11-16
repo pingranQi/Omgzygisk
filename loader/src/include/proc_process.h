@@ -14,6 +14,9 @@ extern "C" {
  */
 ssize_t onyx_proc_read_exe(pid_t pid, char *buffer, size_t capacity);
 
+/* Retry waitpid after EINTR; otherwise preserve waitpid's return value and errno. */
+pid_t onyx_waitpid_retry(pid_t pid, int *status, int options);
+
 #ifdef __cplusplus
 }
 #endif
