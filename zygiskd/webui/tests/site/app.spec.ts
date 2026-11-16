@@ -45,7 +45,7 @@ test.describe("status", () => {
 	});
 
 
-	test("shows the memory placement policy and reports Native ZN as unavailable", async ({ page }) => {
+	test("shows the memory placement policy and Native ZN integration status", async ({ page }) => {
 		await page.goto("/");
 		await expect(
 			main(page).getByText("High-address VMA gap preferred", { exact: true }),
@@ -54,11 +54,11 @@ test.describe("status", () => {
 			main(page).getByText("Native ZN API", { exact: true }),
 		).toBeVisible();
 		await expect(
-			main(page).getByText("Not implemented", { exact: true }),
+			main(page).getByText("Implemented (experimental)", { exact: true }),
 		).toBeVisible();
 		await expect(
 			main(page).getByText(
-				"Native ZN modules require an exec-time bootstrap and a separate native-process lifecycle. This build provides Zygisk API and FN, not Native ZN.",
+				"Native ZN v1–v4 loading, hooks, symbol resolution and companion support are integrated. HyperOS runtime support is experimental; device-level compatibility is not yet verified.",
 				{ exact: true },
 			),
 		).toBeVisible();
