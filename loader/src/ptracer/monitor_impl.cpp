@@ -436,7 +436,7 @@ bool AppMonitor::SigChldHandler::Init() {
  *       `ptrace` with `PTRACE_O_TRACEEXEC` and adds the PID to the candidate set
  *       (`process_`) to await its biological identity.
  */
-void AppMonitor::SigChldHandler::HandleEvent(EventLoop &, uint32_t) {
+void AppMonitor::SigChldHandler::HandleEvent(EventLoop &loop, uint32_t) {
     for (;;) {
         struct signalfd_siginfo fdsi;
         ssize_t s = read(signal_fd_, &fdsi, sizeof(fdsi));
@@ -444,6 +444,7 @@ void AppMonitor::SigChldHandler::HandleEvent(EventLoop &, uint32_t) {
             if (errno == EINTR) continue;
             if (errno == EAGAIN) break;
             PLOGE("read signalfd");
+            loop.Stop();
             break;
         }
         if (s != sizeof(fdsi) || fdsi.ssi_signo != SIGCHLD) {
