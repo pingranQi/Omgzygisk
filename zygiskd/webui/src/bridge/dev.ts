@@ -42,7 +42,7 @@ const DEV_STATE = [
 ].join("\n");
 
 const DEV_LOGS = [
-	"I/zygiskd(1234): Welcome to OnyxZygisk",
+	"I/zygiskd(1234): Welcome to OmgZygisk",
 	"I/zygisk-core64(1256): zygisk library injected, version v1.0",
 	"I/zygiskd(1234): Daemon listening on cp64.sock",
 	"W/zygisk-sh(1201): Scheduled 2 FN nodes for the next fork",
