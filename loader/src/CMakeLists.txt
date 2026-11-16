@@ -4,9 +4,7 @@ project("loader" C CXX)
 set(CMAKE_CXX_STANDARD 23)
 
 # Optional host-side validation for the platform-independent Rust loader
-# primitives. The Rust core is not linked into the Android runtime yet:
-# Android's Zygisk ABI and third-party linker/hook libraries remain a
-# separate compatibility boundary.
+# primitives.
 option(ONYX_BUILD_RUSTCORE_TESTS "Expose the platform-independent Rust tests" OFF)
 if(ONYX_BUILD_RUSTCORE_TESTS)
     find_program(CARGO_EXECUTABLE cargo REQUIRED)
@@ -24,6 +22,8 @@ find_program(CARGO_EXECUTABLE cargo REQUIRED)
 set(RUSTCORE_MANIFEST ${CMAKE_CURRENT_SOURCE_DIR}/../rustcore/Cargo.toml)
 set(RUSTCORE_TARGET_DIR ${CMAKE_CURRENT_BINARY_DIR}/rustcore-target)
 set(RUSTCORE_LIBRARY ${RUSTCORE_TARGET_DIR}/aarch64-linux-android/release/libonyxzygisk_loader_core.a)
+file(GLOB_RECURSE RUSTCORE_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/../rustcore/src/*.rs)
 add_custom_command(
     OUTPUT ${RUSTCORE_LIBRARY}
     COMMAND ${CMAKE_COMMAND} -E env CARGO_TARGET_DIR=${RUSTCORE_TARGET_DIR}
@@ -31,9 +31,7 @@ add_custom_command(
             --target aarch64-linux-android --release
     DEPENDS
         ${RUSTCORE_MANIFEST}
-        ${CMAKE_CURRENT_SOURCE_DIR}/../rustcore/src/lib.rs
-        ${CMAKE_CURRENT_SOURCE_DIR}/../rustcore/src/ffi.rs
-        ${CMAKE_CURRENT_SOURCE_DIR}/../rustcore/src/monitor.rs
+        ${RUSTCORE_SOURCES}
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../rustcore
     COMMENT "Building Rust monitor core for Android ARM64"
     VERBATIM)
