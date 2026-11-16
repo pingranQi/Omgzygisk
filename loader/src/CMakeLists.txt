@@ -19,12 +19,12 @@ endif()
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-add_definitions(-DZKSU_VERSION=\\\"\${ZKSU_VERSION}\\\")
+add_definitions(-DZKSU_VERSION=\"${ZKSU_VERSION}\")
 
 # The work directory comes in as a plain CMake variable from the Gradle build
 # (-DWORK_DIRECTORY=...); the escaped quotes produce a C string literal.
 # Quoting inside the Gradle cFlags is fragile across host OSes.
-add_definitions(-DWORK_DIRECTORY=\\\"\${WORK_DIRECTORY}\\\")
+add_definitions(-DWORK_DIRECTORY=\"${WORK_DIRECTORY}\")
 
 aux_source_directory(common COMMON_SRC_LIST)
 add_library(common STATIC ${COMMON_SRC_LIST})
