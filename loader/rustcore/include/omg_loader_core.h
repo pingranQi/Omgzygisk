@@ -48,6 +48,10 @@ bool omg_loader_core_crash_loop_update(uint32_t *crash_count,
 uint32_t omg_loader_core_elf_sysv_hash(const uint8_t *name, size_t length);
 uint32_t omg_loader_core_elf_gnu_hash(const uint8_t *name, size_t length);
 
+/* ELF symbol hash algorithms. The input buffer remains caller-owned. */
+uint32_t omg_loader_core_elf_sysv_hash(const uint8_t *name, size_t length);
+uint32_t omg_loader_core_elf_gnu_hash(const uint8_t *name, size_t length);
+
 /* Validate bounded ELF64 little-endian AArch64 ET_DYN metadata. */
 bool omg_loader_core_validate_elf64_aarch64(const uint8_t *data, size_t length);
 
