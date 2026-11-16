@@ -4,7 +4,33 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-#include "logging.hpp"
+#include "logging.hpp"\n#include "omg_loader_core.h"
+#include "socket_utils.hpp"
+
+namespace zygiskd {
+static std::string TMP_PATH;
+
+void Init(const char *path) {
+    TMP_PATH = path;
+}
+
+std::string GetTmpPath() { return TMP_PATH; }
+
+int Connect(uint8_t retry) {
+    auto socket_path = GetTmpPath() + kCPSocketName;
+    const int result = omg_loader_core_connect_unix(socket_path.c_str(), retry);
+    if (result < 0) {
+        errno = -result;
+        return -1;
+    }
+    return result;
+}include "daemon.hpp"
+
+#include <linux/un.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+#include "logging.hpp"\n#include "omg_loader_core.h"
 #include "socket_utils.hpp"
 
 namespace zygiskd {
