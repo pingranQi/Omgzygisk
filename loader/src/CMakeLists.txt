@@ -41,12 +41,12 @@ add_dependencies(omg_rust_core omg_rust_core_build)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-add_definitions(-DZKSU_VERSION=\\\"${ZKSU_VERSION}\\\")
+add_definitions(-DZKSU_VERSION=\"${ZKSU_VERSION}\")
 
 # The work directory comes in as a plain CMake variable from the Gradle build
 # (-DWORK_DIRECTORY=...); the escaped quotes produce a C string literal.
 # Quoting inside the Gradle cFlags is fragile across host OSes.
-add_definitions(-DWORK_DIRECTORY=\\\"${WORK_DIRECTORY}\\\")
+add_definitions(-DWORK_DIRECTORY=\"${WORK_DIRECTORY}\")
 
 # Apply size-oriented options before creating targets so they also cover the
 # bundled native dependencies. Directory options are appended after the NDK
