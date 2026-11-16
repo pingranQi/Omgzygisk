@@ -1,10 +1,11 @@
 cmake_minimum_required(VERSION 3.22.1)
 project("loader" C CXX)
 
-set(CMAKE_C_STANDARD 17)
-set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# The Android Gradle plugin supplies -std=c18 in CMAKE_C_FLAGS. Keep the C
+# standard flag there: CMake 3.22 does not model C18 as a distinct dialect.
 
 # Optional host-side validation for the platform-independent Rust loader
 # primitives.
