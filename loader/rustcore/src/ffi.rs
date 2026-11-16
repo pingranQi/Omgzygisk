@@ -15,6 +15,43 @@ pub extern "C" fn omg_loader_core_monitor_transition(state: u8, event: u8) -> u8
     crate::monitor::transition(state, event)
 }
 
+
+/// Update the zygote crash-loop counter using monotonic seconds.
+/// Returns false for invalid pointers/policy values. A non-running prior
+/// generation does not increment the counter.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn omg_loader_core_crash_loop_update(
+    crash_count: *mut u32,
+    last_restart_seconds: *mut i64,
+    now_seconds: i64,
+    was_running: bool,
+    window_seconds: i64,
+    retry_count: u32,
+) -> bool {
+    if crash_count.is_null()
+        || last_restart_seconds.is_null()
+        || window_seconds <= 0
+        || retry_count == 0
+    {
+        return false;
+    }
+    if !was_running {
+        return false;
+    }
+
+    // SAFETY: pointers are checked above; caller guarantees writable storage.
+    let count = unsafe { &mut *crash_count };
+    let last = unsafe { &mut *last_restart_seconds };
+    let elapsed = now_seconds.checked_sub(*last);
+    if elapsed.map_or(true, |value| value < 0 || value >= window_seconds) {
+        *count = 1;
+    } else {
+        *count = count.saturating_add(1);
+    }
+    *last = now_seconds;
+    *count >= retry_count
+}
+
 /// ABI version for compile-time/runtime compatibility checks.
 #[unsafe(no_mangle)]
 pub extern "C" fn omg_loader_core_abi_version() -> u32 {
@@ -68,6 +105,30 @@ pub unsafe extern "C" fn omg_loader_core_validate_control_packet(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+
+    #[test]
+    fn crash_loop_counter_matches_window_and_running_generation_policy() {
+        let mut count = 0;
+        let mut last = 0;
+        assert!(!unsafe { omg_loader_core_crash_loop_update(&mut count, &mut last, 100, false, 30, 3) });
+        assert_eq!((count, last), (0, 0));
+        assert!(!unsafe { omg_loader_core_crash_loop_update(&mut count, &mut last, 100, true, 30, 3) });
+        assert!(!unsafe { omg_loader_core_crash_loop_update(&mut count, &mut last, 110, true, 30, 3) });
+        assert!(unsafe { omg_loader_core_crash_loop_update(&mut count, &mut last, 120, true, 30, 3) });
+        assert_eq!((count, last), (3, 120));
+        assert!(!unsafe { omg_loader_core_crash_loop_update(&mut count, &mut last, 90, true, 30, 3) });
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn crash_loop_counter_rejects_invalid_arguments() {
+        let mut count = 0;
+        let mut last = 0;
+        assert!(!unsafe { omg_loader_core_crash_loop_update(std::ptr::null_mut(), &mut last, 1, true, 30, 3) });
+        assert!(!unsafe { omg_loader_core_crash_loop_update(&mut count, &mut last, 1, true, 0, 3) });
+        assert!(!unsafe { omg_loader_core_crash_loop_update(&mut count, &mut last, 1, true, 30, 0) });
+    }
 
     #[test]
     fn exposes_monitor_lifecycle_transitions() {
