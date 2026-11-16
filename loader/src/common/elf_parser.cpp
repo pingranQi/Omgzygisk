@@ -127,6 +127,16 @@ ElfImage::~ElfImage() {
     }
 }
 
+uint32_t ElfImage::calculateSysvHash(std::string_view name) {
+    return omg_loader_core_elf_sysv_hash(
+        reinterpret_cast<const uint8_t*>(name.data()), name.size());
+}
+
+uint32_t ElfImage::calculateGnuHash(std::string_view name) {
+    return omg_loader_core_elf_gnu_hash(
+        reinterpret_cast<const uint8_t*>(name.data()), name.size());
+}
+
 ElfW(Addr) ElfImage::findSymbolAddress(std::string_view symbol_name) const {
     return findSymbolAddress(symbol_name, nullptr);
 }
