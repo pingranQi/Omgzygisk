@@ -31,61 +31,61 @@ ssize_t xrecvmsg(int sockfd, struct msghdr* msg, int flags) {
 }
 
 void* recv_fds(int sockfd, char* cmsgbuf, size_t bufsz, int cnt) {
-    // Create a throwaway buffer.
-    // It must match the size Rust sends (sizeof(int) = 4 bytes).
-    int dummy_data;
-
-    iovec iov = {
-        .iov_base = &dummy_data,
-        .iov_len = sizeof(dummy_data),
-    };
-    msghdr msg = {.msg_name = nullptr,
-                  .msg_namelen = 0,
-                  .msg_iov = &iov,
-                  .msg_iovlen = 1,
-                  .msg_control = cmsgbuf,
-                  .msg_controllen = bufsz,
-                  .msg_flags = 0};
-
-    ssize_t rec = xrecvmsg(sockfd, &msg, MSG_WAITALL);
-
-    // --- IO Failed or Stream Desync ---
-    if (rec != sizeof(dummy_data)) {
-        PLOGE("recv_fds: IO failure. Read %zd bytes, expected %zu", rec, sizeof(dummy_data));
-    }
-
-    cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
-
-    // --- No headers received ---
-    if (cmsg == nullptr) {
-        LOGE("recv_fds: No control headers received. msg_controllen=%zu",
-             (size_t) msg.msg_controllen);
+    if (cmsgbuf == nullptr || cnt <= 0 ||
+        static_cast<size_t>(cnt) > (bufsz / sizeof(int))) {
         return nullptr;
     }
 
-    // Check msg_controllen <= bufsz
-    if (msg.msg_controllen != bufsz) {
-        LOGW("recv_fds: Size mismatch. Buffer capacity: %zu, Received len: %zu", bufsz,
-             (size_t) msg.msg_controllen);
+    int payload = 0;
+    iovec iov = {
+        .iov_base = &payload,
+        .iov_len = sizeof(payload),
+    };
+    msghdr msg = {
+        .msg_name = nullptr,
+        .msg_namelen = 0,
+        .msg_iov = &iov,
+        .msg_iovlen = 1,
+        .msg_control = cmsgbuf,
+        .msg_controllen = bufsz,
+        .msg_flags = 0,
+    };
+
+    ssize_t received;
+    do {
+        received = recvmsg(sockfd, &msg, MSG_CMSG_CLOEXEC);
+    } while (received < 0 && errno == EINTR);
+
+    cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
+    const size_t expected_len = CMSG_LEN(sizeof(int) * static_cast<size_t>(cnt));
+    const bool valid = received == static_cast<ssize_t>(sizeof(payload)) &&
+                       (msg.msg_flags & MSG_CTRUNC) == 0 &&
+                       cmsg != nullptr &&
+                       cmsg->cmsg_level == SOL_SOCKET &&
+                       cmsg->cmsg_type == SCM_RIGHTS &&
+                       cmsg->cmsg_len == expected_len &&
+                       CMSG_NXTHDR(&msg, cmsg) == nullptr;
+
+    if (valid) return CMSG_DATA(cmsg);
+
+    // Any SCM_RIGHTS descriptors received on a rejected message are already
+    // installed in this process. Close them rather than leaking them.
+    for (cmsghdr* item = CMSG_FIRSTHDR(&msg); item != nullptr;
+         item = CMSG_NXTHDR(&msg, item)) {
+        if (item->cmsg_level != SOL_SOCKET || item->cmsg_type != SCM_RIGHTS ||
+            item->cmsg_len < CMSG_LEN(0)) {
+            continue;
+        }
+        const size_t bytes = item->cmsg_len - CMSG_LEN(0);
+        const size_t count = bytes / sizeof(int);
+        const int* descriptors = reinterpret_cast<const int*>(CMSG_DATA(item));
+        for (size_t i = 0; i < count; ++i) close(descriptors[i]);
     }
 
-    // Check Header Length Field
-    size_t expected_cmsg_len = CMSG_LEN(sizeof(int) * cnt);
-    if (cmsg->cmsg_len != expected_cmsg_len) {
-        LOGW("recv_fds: CMSG header len mismatch. Header says: %zu, Calculated: %zu (cnt=%d)",
-             (size_t) cmsg->cmsg_len, expected_cmsg_len, cnt);
-    }
-
-    // Check Protocol details
-    if (cmsg->cmsg_level != SOL_SOCKET || cmsg->cmsg_type != SCM_RIGHTS) {
-        LOGW("recv_fds: Protocol mismatch. Level: %d (exp %d), Type: %d (exp %d)", cmsg->cmsg_level,
-             SOL_SOCKET, cmsg->cmsg_type, SCM_RIGHTS);
-    }
-
-    // Return data anyway so we can see if the FD is valid
-    return CMSG_DATA(cmsg);
+    if (received < 0) PLOGE("recv_fds: recvmsg");
+    else LOGE("recv_fds: rejected malformed descriptor message");
+    return nullptr;
 }
-
 uint8_t read_u8(int fd) { return omg_loader_core_read_u8(fd); }
 
 uint32_t read_u32(int fd) { return omg_loader_core_read_u32(fd); }
@@ -123,7 +123,7 @@ bool write_string(int fd, std::string_view str) {
 }
 
 int recv_fd(int sockfd) {
-    char cmsgbuf[CMSG_SPACE(sizeof(int))];
+    alignas(cmsghdr) char cmsgbuf[CMSG_SPACE(sizeof(int))]{};
 
     void* data = recv_fds(sockfd, cmsgbuf, sizeof(cmsgbuf), 1);
     if (data == nullptr) return -1;
