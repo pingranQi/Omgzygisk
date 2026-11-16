@@ -105,6 +105,8 @@ jobs:
         env:
           RUSTFLAGS: ""
         run: bash ./gradlew :module:zipRelease --no-daemon --console=plain
+      - name: Benchmark XZ against ZIP compression
+        run: python3 scripts/benchmark_xz.py module/build/outputs/module/release | tee xz-benchmark.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload module ZIP
         uses: actions/upload-artifact@v7
         with:
