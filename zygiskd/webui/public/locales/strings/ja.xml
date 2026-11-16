@@ -97,4 +97,5 @@
 	<string name="status_zn_api">Native ZN API</string>
 	<string name="status_zn_api_unavailable">未実装</string>
 	<string name="status_zn_api_desc">Native ZN モジュールには exec 時のブートストラップと独立したネイティブプロセスのライフサイクル管理が必要です。このビルドは Zygisk API と FN を提供し、Native ZN には対応していません。</string>
+	<string name="fn_pending_remove">削除待ち</string>
 </resources>
