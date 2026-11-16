@@ -2,28 +2,26 @@
 
 #include <sys/sysmacros.h>
 
-using namespace std::string_view_literals;
+namespace {
+struct LineCallbackContext {
+    const std::function<bool(std::string_view)> *callback;
+};
+
+int invoke_line_callback(const char *line, size_t length, void *opaque) {
+    auto *context = static_cast<LineCallbackContext *>(opaque);
+    return (*context->callback)(std::string_view(line, length)) ? 1 : 0;
+}
+}  // namespace
 
 void file_readline(bool trim, FILE *fp, const std::function<bool(std::string_view)> &fn) {
-    size_t len = 1024;
-    char *buf = (char *) malloc(len);
-    char *start;
-    ssize_t read;
-    while ((read = getline(&buf, &len, fp)) >= 0) {
-        start = buf;
-        if (trim) {
-            while (read && "\n\r "sv.find(buf[read - 1]) != std::string::npos) --read;
-            buf[read] = '\0';
-            while (*start == ' ') ++start;
-        }
-        if (!fn(start)) break;
-    }
-    free(buf);
+    LineCallbackContext context{&fn};
+    onyx_file_readline(fp, trim ? 1 : 0, invoke_line_callback, &context);
 }
 
 void file_readline(bool trim, const char *file, const std::function<bool(std::string_view)> &fn) {
     if (auto fp = open_file(file, "re")) file_readline(trim, fp.get(), fn);
 }
+
 void file_readline(const char *file, const std::function<bool(std::string_view)> &fn) {
     file_readline(false, file, fn);
 }
