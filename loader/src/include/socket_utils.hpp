@@ -2,7 +2,7 @@
 
 #include <string>
 #include <string_view>
-#include <cstdlib>
+#include <sys/socket.h>
 
 #include "socket_utils_c.h"
 
@@ -21,12 +21,18 @@ inline bool write_u32(int fd, uint32_t value) { return omg_socket_write_u32(fd, 
 inline bool write_usize(int fd, size_t value) { return omg_socket_write_usize(fd, value) != 0; }
 inline int recv_fd(int fd) { return omg_socket_recv_fd(fd); }
 inline std::string read_string(int fd) {
-    char *value = nullptr;
-    size_t length = 0;
-    if (!omg_socket_read_string(fd, &value, &length)) return {};
-    std::string result(value, length);
-    free(value);
-    return result;
+    constexpr size_t max_length = 1024u * 1024u;
+    const size_t length = read_usize(fd);
+    if (length > max_length) {
+        shutdown(fd, SHUT_RDWR);
+        return {};
+    }
+    std::string value(length, '\\0');
+    if (length != 0 && xread(fd, value.data(), length) != static_cast<ssize_t>(length)) {
+        shutdown(fd, SHUT_RDWR);
+        return {};
+    }
+    return value;
 }
 inline bool write_string(int fd, std::string_view value) {
     return omg_socket_write_string(fd, value.data(), value.size()) != 0;

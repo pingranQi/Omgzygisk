@@ -16,7 +16,6 @@ size_t omg_socket_read_usize(int fd);
 int omg_socket_write_u8(int fd, uint8_t value);
 int omg_socket_write_u32(int fd, uint32_t value);
 int omg_socket_write_usize(int fd, size_t value);
-int omg_socket_read_string(int fd, char **out, size_t *out_length);
 int omg_socket_write_string(int fd, const char *value, size_t length);
 int omg_socket_recv_fd(int fd);
 
