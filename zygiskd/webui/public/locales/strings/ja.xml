@@ -88,8 +88,7 @@
 	<string name="settings_mount_mode_setns">名前空間切替</string>
 	<string name="settings_mount_mode_global">グローバル</string>
 	<string name="settings_about_section">このモジュールについて</string>
-	<string name="settings_authors">作者</string>
-	<string name="settings_about_text">FN（Functional Node）モジュールに対応する ARM64 専用の ptrace ベース Zygisk 実装です。NeoZygisk のフォークです。</string>
+	<string name="settings_about_text">ARM64 を主対象とする Zygisk ランタイムで、Native ZN API と FN モジュールに対応します。</string>
 	<string name="status_memory_api_section">メモリとネイティブ API</string>
 	<string name="status_memory_policy">メモリ配置</string>
 	<string name="status_memory_policy_value">高位 VMA の空き領域を優先</string>
