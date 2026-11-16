@@ -1,5 +1,5 @@
 import java.nio.file.Paths
-import org.gradle.internal.os.OperatingSystem
+import java.util.Locale
 
 plugins {
     alias(libs.plugins.agp.lib)
@@ -12,8 +12,9 @@ val workDirectory: String by rootProject.extra
 
 fun Project.findInPath(executable: String, property: String): String? {
     val pathEnv = System.getenv("PATH")
+    val isWindows = System.getProperty("os.name").lowercase(Locale.ROOT).contains("win")
     return pathEnv.split(File.pathSeparator).map { folder ->
-        Paths.get("${folder}${File.separator}${executable}${if (OperatingSystem.current().isWindows) ".exe" else ""}")
+        Paths.get("${folder}${File.separator}${executable}${if (isWindows) ".exe" else ""}")
             .toFile()
     }.firstOrNull { path ->
         path.exists()
