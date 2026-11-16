@@ -235,13 +235,13 @@ export function StatusView({ snapshot }: StatusViewProps) {
 					<Divider />
 					<StatusField
 						label={tr("status_zn_api", "Native ZN API")}
-						value={tr("status_zn_api_unavailable", "Not implemented")}
-						tone="unavailable"
+						value={tr("status_zn_api_experimental", "Implemented (experimental)")}
+						tone="pending"
 					/>
 					<p className="text-onx-caption text-onx-muted">
 						{tr(
 							"status_zn_api_desc",
-							"Native ZN modules require an exec-time bootstrap and a separate native-process lifecycle. This build provides Zygisk API and FN, not Native ZN.",
+							"Native ZN v1–v4 loading, hooks, symbol resolution and companion support are integrated. HyperOS runtime support is experimental; device-level compatibility is not yet verified.",
 						)}
 					</p>
 				</Card>
