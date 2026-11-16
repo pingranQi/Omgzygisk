@@ -34,7 +34,7 @@ void ZygoteAbiManager::notify_injected() {
     // threshold and made `is_in_crash_loop` stop monitoring a perfectly
     // healthy device.
     counter.count = 0;
-    counter.last_start_time = {.tv_sec = 0, .tv_nsec = 0};
+    counter.last_start_seconds = 0;
 }
 
 void ZygoteAbiManager::set_daemon_info(std::string_view info) { status_.daemon_info = info; }
@@ -63,8 +63,8 @@ bool ZygoteAbiManager::is_in_crash_loop() {
     bool count_this_time = previous_was_running;
 
     const bool crash_loop = omg_loader_core_crash_loop_update(
-        reinterpret_cast<uint32_t *>(&counter.count),
-        reinterpret_cast<int64_t *>(&counter.last_start_time.tv_sec),
+        &counter.count,
+        &counter.last_start_seconds,
         static_cast<int64_t>(now.tv_sec),
         count_this_time,
         ZygoteAbiManager::CRASH_LOOP_WINDOW_SECONDS,
