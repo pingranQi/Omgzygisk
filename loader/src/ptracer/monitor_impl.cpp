@@ -9,7 +9,6 @@
 
 #include <cstdlib>
 #include <csignal>
-#include <sstream>
 
 #include "daemon.hpp"
 #include "files.hpp"
@@ -154,17 +153,20 @@ void AppMonitor::update_status() {
         status_text += ")";
     }
 
-    // Build the full content in a single stringstream for clarity.
-    std::stringstream ss;
-    ss << pre_section_ << "\n" << status_text << "\n\n";
-
+    // Build the output directly. Avoid stringstream's locale/formatting
+    // machinery and its intermediate buffer in this frequently updated status path.
     std::string abi_section;
     write_abi_status_section(abi_section, zygote_.get_status());
 
-    ss << abi_section << "\n\n";
-
-    std::string final_output = ss.str();
-    fwrite(final_output.c_str(), 1, final_output.length(), prop_file.get());
+    std::string final_output;
+    final_output.reserve(pre_section_.size() + status_text.size() + abi_section.size() + 6);
+    final_output.append(pre_section_);
+    final_output.append("\n");
+    final_output.append(status_text);
+    final_output.append("\n\n");
+    final_output.append(abi_section);
+    final_output.append("\n\n");
+    fwrite(final_output.data(), 1, final_output.size(), prop_file.get());
 }
 
 bool AppMonitor::prepare_environment() {
