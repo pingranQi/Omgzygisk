@@ -17,7 +17,7 @@ EventLoop::~EventLoop() {
 }
 
 bool EventLoop::Init() {
-    epoll_fd_ = epoll_create(1);
+    epoll_fd_ = epoll_create1(EPOLL_CLOEXEC);
     if (epoll_fd_ == -1) {
         PLOGE("create epoll fd");
         return false;
@@ -35,10 +35,10 @@ void EventLoop::Loop() {
     while (running) {
         int nfds = epoll_wait(epoll_fd_, events, MAX_EVENTS, -1);
         if (nfds == -1) {
-            if (errno != EINTR) {
-                PLOGE("epoll_wait");
-            }
-            continue;
+            if (errno == EINTR) continue;
+            PLOGE("epoll_wait");
+            running = false;
+            break;
         }
 
         for (int i = 0; i < nfds; i++) {
