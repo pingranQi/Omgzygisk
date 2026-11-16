@@ -26,6 +26,7 @@
 
 #include "logging.hpp"
 #include "proc_maps.h"
+#include "proc_process.h"
 
 /**
  * @brief Scans and parses the /proc/[pid]/maps file for a given process.
@@ -582,18 +583,13 @@ std::string parse_status(int status) {
  * @return The path to the executable, or an empty string on failure.
  */
 std::string get_program(int pid) {
-    std::string path = "/proc/";
-    path += std::to_string(pid);
-    path += "/exe";
-    constexpr const auto SIZE = 256;
-    char buf[SIZE + 1];
-    auto sz = readlink(path.c_str(), buf, SIZE);
-    if (sz == -1) {
+    std::array<char, 4096> path{};
+    const ssize_t length = onyx_proc_read_exe(pid, path.data(), path.size());
+    if (length < 0) {
         PLOGE("readlink /proc/%d/exe", pid);
         return "";
     }
-    buf[sz] = 0;
-    return buf;
+    return std::string(path.data(), static_cast<size_t>(length));
 }
 
 // --- Raw remote syscall primitive ---------------------------------------------
