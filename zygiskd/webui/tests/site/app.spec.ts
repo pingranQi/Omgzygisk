@@ -209,7 +209,7 @@ test.describe("logs", () => {
 		await page.goto("/");
 		await gotoPage(page, "Logs");
 		await expect(main(page).getByTestId("log-panel")).toContainText(
-			"Welcome to OnyxZygisk",
+			"Welcome to OmgZygisk",
 		);
 	});
 
@@ -223,7 +223,7 @@ test.describe("logs", () => {
 			.getByRole("searchbox", { name: "Filter" })
 			.fill("prop_shield");
 		await expect(panel).toContainText("prop_shield");
-		await expect(panel).not.toContainText("Welcome to OnyxZygisk");
+		await expect(panel).not.toContainText("Welcome to OmgZygisk");
 	});
 
 	test("marks the error level by weight, never by hue", async ({ page }) => {
