@@ -8,6 +8,7 @@ use crate::control::{self, Command};
 unsafe extern "C" {
     fn read(fd: i32, buffer: *mut core::ffi::c_void, count: usize) -> isize;
     fn write(fd: i32, buffer: *const core::ffi::c_void, count: usize) -> isize;
+    fn __errno() -> *mut i32;
 }
 
 /// Read bytes from a stream, retrying interrupted system calls.
@@ -18,7 +19,12 @@ pub unsafe extern "C" fn omg_loader_core_read_exact(fd: i32, buffer: *mut u8, le
     while offset < length {
         // SAFETY: the caller provides a writable buffer of length bytes.
         let result = unsafe { read(fd, buffer.add(offset).cast(), length - offset) };
-        if result < 0 { return -1; }
+        if result < 0 {
+            // Android bionic's __errno() exposes the calling thread's errno.
+            // EINTR is 4 on Linux/Android and must preserve the old retry behavior.
+            if unsafe { *__errno() } == 4 { continue; }
+            return -1;
+        }
         if result == 0 { break; }
         offset += result as usize;
     }
@@ -33,7 +39,10 @@ pub unsafe extern "C" fn omg_loader_core_write_exact(fd: i32, buffer: *const u8,
     while offset < length {
         // SAFETY: the caller provides a readable buffer of length bytes.
         let result = unsafe { write(fd, buffer.add(offset).cast(), length - offset) };
-        if result < 0 { return offset; }
+        if result < 0 {
+            if unsafe { *__errno() } == 4 { continue; }
+            return offset;
+        }
         if result == 0 { break; }
         offset += result as usize;
     }
