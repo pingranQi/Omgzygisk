@@ -1,6 +1,6 @@
 ---
 version: alpha
-name: OnyxZygisk WebUI
+name: OmgZygisk WebUI
 description: A strictly monochrome Android module WebUI. Hierarchy is carried by type, weight, hairlines, spacing and a grayscale surface ramp — never by hue.
 colors:
   light:
@@ -38,7 +38,7 @@ colors:
     on-accent: "#000000"
 ---
 
-# OnyxZygisk WebUI — Design Standard
+# OmgZygisk WebUI — Design Standard
 
 ## Overview
 
@@ -490,7 +490,7 @@ setting, which is exactly the desktop affordance the touch-first rule rejects.
 
 The WebUI runs inside a KernelSU / APatch / MMRL WebView, where the host injects `window.ksu`
 or `window.mmrl`. `src/bridge.ts` is the single seam onto it, and it resolves to the
-`kernelsu-alt` package for KernelSU and APatch, plus a small MMRL adapter, because OnyxZygisk
+`kernelsu-alt` package for KernelSU and APatch, plus a small MMRL adapter, because OmgZygisk
 ships to all three hosts. Two things follow, and both are enforced by
 `tests/unit/bundle.test.mjs`.
 
