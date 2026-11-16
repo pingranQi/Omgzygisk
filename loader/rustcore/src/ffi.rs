@@ -5,6 +5,85 @@
 
 use crate::control::{self, Command};
 
+unsafe extern "C" {
+    fn read(fd: i32, buffer: *mut core::ffi::c_void, count: usize) -> isize;
+    fn write(fd: i32, buffer: *const core::ffi::c_void, count: usize) -> isize;
+}
+
+/// Read bytes from a stream, retrying interrupted system calls.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn omg_loader_core_read_exact(fd: i32, buffer: *mut u8, length: usize) -> isize {
+    if buffer.is_null() && length != 0 { return -1; }
+    let mut offset = 0usize;
+    while offset < length {
+        // SAFETY: the caller provides a writable buffer of length bytes.
+        let result = unsafe { read(fd, buffer.add(offset).cast(), length - offset) };
+        if result < 0 { return -1; }
+        if result == 0 { break; }
+        offset += result as usize;
+    }
+    offset as isize
+}
+
+/// Write bytes to a stream, returning the number of bytes written.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn omg_loader_core_write_exact(fd: i32, buffer: *const u8, length: usize) -> usize {
+    if buffer.is_null() && length != 0 { return 0; }
+    let mut offset = 0usize;
+    while offset < length {
+        // SAFETY: the caller provides a readable buffer of length bytes.
+        let result = unsafe { write(fd, buffer.add(offset).cast(), length - offset) };
+        if result < 0 { return offset; }
+        if result == 0 { break; }
+        offset += result as usize;
+    }
+    offset
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn omg_loader_core_read_u8(fd: i32) -> u8 {
+    let mut value = 0u8;
+    // SAFETY: value is writable for one byte.
+    if unsafe { omg_loader_core_read_exact(fd, &mut value, 1) } != 1 { 0 } else { value }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn omg_loader_core_read_u32(fd: i32) -> u32 {
+    let mut bytes = [0u8; 4];
+    // SAFETY: bytes is writable for four bytes.
+    if unsafe { omg_loader_core_read_exact(fd, bytes.as_mut_ptr(), bytes.len()) } != 4 { 0 }
+    else { u32::from_ne_bytes(bytes) }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn omg_loader_core_read_usize(fd: i32) -> usize {
+    let mut bytes = [0u8; core::mem::size_of::<usize>()];
+    // SAFETY: bytes is writable for its full length.
+    if unsafe { omg_loader_core_read_exact(fd, bytes.as_mut_ptr(), bytes.len()) } != bytes.len() as isize { 0 }
+    else { usize::from_ne_bytes(bytes) }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn omg_loader_core_write_u8(fd: i32, value: u8) -> bool {
+    // SAFETY: value is readable for one byte.
+    unsafe { omg_loader_core_write_exact(fd, &value, 1) == 1 }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn omg_loader_core_write_u32(fd: i32, value: u32) -> bool {
+    let bytes = value.to_ne_bytes();
+    // SAFETY: bytes remains alive and readable during the call.
+    unsafe { omg_loader_core_write_exact(fd, bytes.as_ptr(), bytes.len()) == bytes.len() }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn omg_loader_core_write_usize(fd: i32, value: usize) -> bool {
+    let bytes = value.to_ne_bytes();
+    // SAFETY: bytes remains alive and readable during the call.
+    unsafe { omg_loader_core_write_exact(fd, bytes.as_ptr(), bytes.len()) == bytes.len() }
+}
+
+
 const MAX_CONTROL_PACKET_BYTES: usize = 8 + control::MAX_PAYLOAD_BYTES;
 
 /// Apply one monitor lifecycle event. State values: tracing=1, stopping=2,
