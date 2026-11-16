@@ -12,7 +12,7 @@ int file_line_callback(const char *line, size_t length, void *context) {
 }  // namespace
 
 void file_readline(bool trim, FILE *fp, const std::function<bool(std::string_view)> &fn) {
-    omg_file_readline(fp, trim, file_line_callback, const_cast<void *>(static_cast<const void *>(&fn)));
+    omg_file_readline(fp, trim, file_line_callback, &fn);
 }
 
 void file_readline(bool trim, const char *file, const std::function<bool(std::string_view)> &fn) {
