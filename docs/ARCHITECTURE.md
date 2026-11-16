@@ -52,14 +52,16 @@ length-bounded before parsing.
 - The daemon is already implemented in Rust.
 - The loader has a platform-independent Rust crate for control packets, IPC
   primitives, descriptor ownership and monitor state transitions.
-- The crate now exports a versioned C ABI and can be built as both an Rust
-  library and a static library.
-- The native loader still contains C++ platform adapters. They are retained
-  until equivalent C/Rust paths are integrated and validated; this change does
-  not claim that the complete injector has already been ported.
-- Android static-library linking and runtime call-site migration are follow-up
-  stages. The current change establishes and tests the ABI contract without
-  silently changing injection behavior.
+- The crate exports a versioned C ABI and builds as both an Rust library and
+  an Android ARM64 static library.
+- CMake builds the Rust static library with cargo-ndk and links it into the
+  ptrace monitor executable.
+- The monitor's Unix datagram control-packet framing and command validation
+  now run through the Rust decoder. C++ retains socket I/O and dispatches the
+  validated command to existing platform operations.
+- Android linker, ptrace, JNI and hook adapters remain in C++ until their
+  replacements are individually migrated and device-validated; the complete
+  injector has not yet been ported.
 
 ## Suggested migration order
 
