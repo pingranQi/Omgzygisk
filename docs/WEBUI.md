@@ -1,6 +1,6 @@
-# OnyxZygisk WebUI
+# OmgZygisk WebUI
 
-OnyxZygisk 的 WebUI 遵循 **KernelSU 模块 WebUI 规范**：静态页面放在模块的
+OmgZygisk 的 WebUI 遵循 **KernelSU 模块 WebUI 规范**：静态页面放在模块的
 `webroot/` 目录，由根管理应用（KernelSU Manager / APatch Manager / MMRL）的
 WebView 直接读取——**不监听任何网络端口，不依赖 TCP**，守护进程完全不参与
 页面传输。
@@ -24,8 +24,8 @@ WebUI 基于 **React 19 + Vite + Tailwind CSS 4** 构建，源码在仓库的
 
 | 宿主 | 入口 |
 |---|---|
-| KernelSU Manager | 模块列表 → OnyxZygisk → WebUI |
-| APatch Manager | 模块列表 → OnyxZygisk → WebUI |
+| KernelSU Manager | 模块列表 → OmgZygisk → WebUI |
+| APatch Manager | 模块列表 → OmgZygisk → WebUI |
 | MMRL | 模块列表 → WebUI |
 
 页面在普通浏览器里打开时（`pnpm dev`）会载入开发用的假数据，便于在没有
@@ -58,7 +58,7 @@ root 设备的机器上开发与测试。
 
 模块源码目录下的 `?gallery` 查询参数会打开设计组件总览页，仅开发构建可用。
 
-当前发行包仅支持 **ARM64（arm64-v8a）**。状态页会显示唯一受支持的 ABI 和 ARM64 Zygote 状态；ARMv7、x86、x86_64 与 32 位进程注入不在支持范围内。状态页同时展示高地址 VMA 空洞优先策略，以及 Native ZN API 当前未实现的兼容性提示。
+当前发行包仅支持 **ARM64（arm64-v8a）**。状态页会显示唯一受支持的 ABI 和 ARM64 Zygote 状态；ARMv7、x86、x86_64 与 32 位进程注入不在支持范围内。状态页同时展示高地址 VMA 空洞优先策略，以及 Native ZN API 的实验性状态和 HyperOS 真机验证限制。
 
 ## 设计标准
 
