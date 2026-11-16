@@ -31,7 +31,7 @@ This is an incremental migration. It must preserve the existing Zygisk/ZN ABI, d
 
 - `zygiskd/` is already a Rust daemon.
 - `loader/rustcore/` is linked into the ARM64 Android ptrace binary as a Rust static library; the monitor lifecycle is routed through its C ABI.
-- The procedural ptrace cleanup helper, Unix socket transport primitives, bounded file line reader, and `/proc/<pid>/maps` parser are implemented in C. C++ retains thin callback/RAII adapters for existing callers.
+- The procedural ptrace cleanup helper, Unix socket transport primitives, bounded file line reader, `/proc/<pid>/maps` and `/proc/<pid>/exe` helpers, and cross-process memory transfer syscalls are implemented in C. C++ retains thin callback/RAII adapters for existing callers.
 - `loader/src/` still contains substantial project-owned C++ code, especially injector, ELF/linker, and ptracer orchestration units; these remain the main migration target.
 - CMake enables both C and C++; the Android Gradle toolchain supplies the C18 dialect flag, while C++ remains on C++23.
 
@@ -54,7 +54,7 @@ This is an incremental migration. It must preserve the existing Zygisk/ZN ABI, d
 - Convert independent procedural `.cpp` units to `.c`; the ptrace cleanup, socket transport, file line reader, and proc maps parser are the first converted units.
 - Replace C++-only headers with C-compatible headers; retain only small inline C++ convenience wrappers where current callers still use C++ strings.
 - Keep classes and upstream C++ dependencies behind narrow adapter boundaries until each subsystem has a tested C/Rust replacement.
-- The proc maps text parser now emits a bounded C callback view; the C++ adapter only materializes the existing `MapInfo` vector. Next candidates are remaining procfs helpers and ptracer utilities, after their ownership and call contracts are separated from C++ containers.
+- The proc maps text parser emits a bounded C callback view; the C++ adapter only materializes the existing `MapInfo` vector. Executable-path lookup and `process_vm_readv` / `process_vm_writev` are also behind C APIs; C++ retains logging and existing call-site compatibility. Continue migrating remaining procedural helpers only after their ownership and call contracts are separated from C++ containers.
 
 ### Stage 3 — Move policy and data ownership to Rust
 
