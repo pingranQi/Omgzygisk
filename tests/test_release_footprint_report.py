@@ -30,6 +30,7 @@ class ReleaseFootprintReportTests(unittest.TestCase):
             with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as archive:
                 archive.writestr("module.prop", "id=example\n")
                 archive.writestr("lib/arm64-v8a/libexample.so", "native-payload")
+                archive.writestr("lib/x86_64/libexample.so", "native-payload")
                 archive.writestr("assets/readme.txt", "documentation")
 
             original_argv = sys.argv
@@ -47,6 +48,11 @@ class ReleaseFootprintReportTests(unittest.TestCase):
             self.assertIn("Native payloads (uncompressed)", report)
             self.assertIn("lib/arm64-v8a/libexample.so", report)
             self.assertIn("Largest 2 entries", report)
+            self.assertIn("Size by ABI path", report)
+            self.assertIn("arm64-v8a", report)
+            self.assertIn("x86_64", report)
+            self.assertIn("Identical-content duplicate bytes", report)
+            self.assertIn("Identical-content duplicates", report)
             self.assertIn("does not alter ZIP contents", report)
 
 
