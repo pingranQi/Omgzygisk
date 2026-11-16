@@ -32,6 +32,9 @@ bool omg_loader_core_crash_loop_update(uint32_t *crash_count,
                                        int64_t window_seconds,
                                        uint32_t retry_count);
 
+/* Validate bounded ELF64 little-endian AArch64 ET_DYN metadata. */
+bool omg_loader_core_validate_elf64_aarch64(const uint8_t *data, size_t length);
+
 /* Returns false for unknown daemon protocol action values. */
 bool omg_loader_core_validate_daemon_action(uint8_t action);
 
