@@ -360,7 +360,7 @@ mod tests {
 
     #[test]
     fn validates_elf64_aarch64_header_and_table_bounds() {
-        let mut elf = [0u8; 184];
+        let mut elf = [0u8; 249];
         elf[0..4].copy_from_slice(b"\x7fELF");
         elf[4] = 2;
         elf[5] = 1;
@@ -374,13 +374,17 @@ mod tests {
         elf[54..56].copy_from_slice(&56u16.to_le_bytes());
         elf[56..58].copy_from_slice(&1u16.to_le_bytes());
         elf[58..60].copy_from_slice(&64u16.to_le_bytes());
-        elf[60..62].copy_from_slice(&1u16.to_le_bytes());
-        elf[62..64].copy_from_slice(&0u16.to_le_bytes());
+        elf[60..62].copy_from_slice(&2u16.to_le_bytes());
+        elf[62..64].copy_from_slice(&1u16.to_le_bytes());
+        // Section 1 is the section-name string table containing the empty name.
+        elf[120 + 64 + 4..120 + 64 + 8].copy_from_slice(&3u32.to_le_bytes());
+        elf[120 + 64 + 24..120 + 64 + 32].copy_from_slice(&248u64.to_le_bytes());
+        elf[120 + 64 + 32..120 + 64 + 40].copy_from_slice(&1u64.to_le_bytes());
         assert!(unsafe { omg_loader_core_validate_elf64_aarch64(elf.as_ptr(), elf.len()) });
         assert!(!unsafe { omg_loader_core_validate_elf64_aarch64(elf.as_ptr(), 63) });
         assert!(!unsafe { omg_loader_core_validate_elf64_aarch64(std::ptr::null(), elf.len()) });
-        assert!(!unsafe { omg_loader_core_validate_elf64_aarch64(elf.as_ptr(), 64) });
-        elf[18..20].copy_from_slice(&62u16.to_le_bytes());
+        assert!(!unsafe { omg_loader_core_validate_elf64_aarch64(elf.as_ptr(), 248) });
+        elf[120 + 64 + 4..120 + 64 + 8].copy_from_slice(&1u32.to_le_bytes());
         assert!(!unsafe { omg_loader_core_validate_elf64_aarch64(elf.as_ptr(), elf.len()) });
     }
 
