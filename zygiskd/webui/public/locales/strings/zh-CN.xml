@@ -97,4 +97,5 @@
 	<string name="status_zn_api">Native ZN API</string>
 	<string name="status_zn_api_unavailable">尚未实现</string>
 	<string name="status_zn_api_desc">Native ZN 模块需要 exec 时注入引导程序，并具备独立的原生进程生命周期管理。本版本提供 Zygisk API 和 FN，尚不支持 Native ZN。</string>
+	<string name="fn_pending_remove">待移除</string>
 </resources>

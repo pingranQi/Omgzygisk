@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import IconArticle from "~icons/material-symbols/article";
 import IconFunctions from "~icons/material-symbols/functions";
 import IconHome from "~icons/material-symbols/home";
@@ -17,6 +17,7 @@ import {
 	snackbar,
 } from "./components/molecules/Snackbar";
 import { TopAppBar } from "./components/molecules/TopAppBar";
+import { useVisibleInterval } from "./hooks/useVisibleInterval";
 import { MODULE_NAME } from "./module_info";
 import {
 	EMPTY_SNAPSHOT,
@@ -35,7 +36,7 @@ export const APPEARANCE_MODES = ["auto", "light", "dark", "amoled"] as const;
 
 const THEME_KEY = "onx-appearance";
 const SCALE_KEY = "onx-ui-scale";
-const REFRESH_MS = 6000;
+const REFRESH_MS = 15000;
 const PAGE_IDS = ["status", "modules", "fn", "logs", "settings"] as const;
 
 function prefersDark(): boolean {
@@ -91,6 +92,7 @@ export function App(): React.JSX.Element {
 	const [scale, setScale] = useState<number>(readStoredScale);
 	const [systemDark, setSystemDark] = useState(prefersDark);
 	const [snapshot, setSnapshot] = useState<SystemSnapshot>(EMPTY_SNAPSHOT);
+	const refreshInFlight = useRef(false);
 
 	useEffect(() => {
 		const query = window.matchMedia("(prefers-color-scheme: dark)");
@@ -117,21 +119,28 @@ export function App(): React.JSX.Element {
 	}, [scale]);
 
 	const refresh = useCallback(async () => {
-		const next = await loadSystemState();
-		// A transient failure must not wipe facts that are still true: keep the
-		// last good state and let the error section name what just failed.
-		setSnapshot((previous) =>
-			next.status === "error" && previous.state !== null
-				? { ...next, state: previous.state }
-				: next,
-		);
+		// A slow shell bridge must not accumulate overlapping status commands.
+		if (refreshInFlight.current) return;
+		refreshInFlight.current = true;
+		try {
+			const next = await loadSystemState();
+			// A transient failure must not wipe facts that are still true: keep the
+			// last good state and let the error section name what just failed.
+			setSnapshot((previous) =>
+				next.status === "error" && previous.state !== null
+					? { ...next, state: previous.state }
+					: next,
+			);
+		} finally {
+			refreshInFlight.current = false;
+		}
 	}, []);
 
 	useEffect(() => {
 		void refresh();
-		const timer = window.setInterval(() => void refresh(), REFRESH_MS);
-		return () => window.clearInterval(timer);
 	}, [refresh]);
+
+	useVisibleInterval(refresh, REFRESH_MS);
 
 	const notify = useCallback((message: string, tone: SnackbarTone): void => {
 		snackbar.show(message, tone);
