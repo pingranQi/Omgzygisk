@@ -9,10 +9,10 @@ import { Icon } from "../components/atoms/Icon";
 import { IconButton } from "../components/atoms/IconButton";
 import { Switch } from "../components/atoms/Switch";
 import { SectionHeader } from "../components/molecules/SectionHeader";
+import { useVisibleInterval } from "../hooks/useVisibleInterval";
 import { cli, keybind } from "../state/app";
 import { messageOf } from "../state/system";
 import { tr } from "../utils/tr";
-import { useVisibleInterval } from "../hooks/useVisibleInterval";
 
 /** logcat -v brief row: "I/zygiskd(1234): message" (pid optional). */
 const LEVEL_RE = /^([VDIWEF])\/([^\s(]+)(?:\((\d+)\))?: ?(.*)$/;
