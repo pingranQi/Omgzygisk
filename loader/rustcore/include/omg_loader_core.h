@@ -20,6 +20,18 @@ uint32_t omg_loader_core_abi_version(void);
  */
 uint8_t omg_loader_core_monitor_transition(uint8_t state, uint8_t event);
 
+/*
+ * Update the zygote crash-loop counter. Returns true when retry_count is
+ * reached. The caller owns both writable counter pointers and supplies
+ * monotonic seconds. Invalid pointers or policy values return false.
+ */
+bool omg_loader_core_crash_loop_update(uint32_t *crash_count,
+                                       int64_t *last_restart_seconds,
+                                       int64_t now_seconds,
+                                       bool was_running,
+                                       int64_t window_seconds,
+                                       uint32_t retry_count);
+
 /* Returns false for unknown daemon protocol action values. */
 bool omg_loader_core_validate_daemon_action(uint8_t action);
 
