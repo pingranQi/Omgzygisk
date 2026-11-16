@@ -1,24 +1,18 @@
 #include "files.hpp"
 
+#include "files_c.h"
+
 #include <sys/sysmacros.h>
 
-using namespace std::string_view_literals;
+namespace {
+int file_line_callback(const char *line, size_t length, void *context) {
+    const auto &fn = *static_cast<const std::function<bool(std::string_view)> *>(context);
+    return fn(std::string_view(line, length));
+}
+}  // namespace
 
 void file_readline(bool trim, FILE *fp, const std::function<bool(std::string_view)> &fn) {
-    size_t len = 1024;
-    char *buf = (char *) malloc(len);
-    char *start;
-    ssize_t read;
-    while ((read = getline(&buf, &len, fp)) >= 0) {
-        start = buf;
-        if (trim) {
-            while (read && "\n\r "sv.find(buf[read - 1]) != std::string::npos) --read;
-            buf[read] = '\0';
-            while (*start == ' ') ++start;
-        }
-        if (!fn(start)) break;
-    }
-    free(buf);
+    omg_file_readline(fp, trim, file_line_callback, const_cast<void *>(static_cast<const void *>(&fn)));
 }
 
 void file_readline(bool trim, const char *file, const std::function<bool(std::string_view)> &fn) {
