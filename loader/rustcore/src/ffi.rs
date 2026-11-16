@@ -158,6 +158,33 @@ mod tests {
         assert!(!unsafe { omg_loader_core_crash_loop_update(&mut count, &mut last, 1, true, 30, 0) });
     }
 
+
+    #[test]
+    fn validates_elf64_aarch64_header_and_table_bounds() {
+        let mut elf = [0u8; 184];
+        elf[0..4].copy_from_slice(b"\x7fELF");
+        elf[4] = 2;
+        elf[5] = 1;
+        elf[6] = 1;
+        elf[16..18].copy_from_slice(&3u16.to_le_bytes());
+        elf[18..20].copy_from_slice(&183u16.to_le_bytes());
+        elf[20..24].copy_from_slice(&1u32.to_le_bytes());
+        elf[32..40].copy_from_slice(&64u64.to_le_bytes());
+        elf[40..48].copy_from_slice(&120u64.to_le_bytes());
+        elf[52..54].copy_from_slice(&64u16.to_le_bytes());
+        elf[54..56].copy_from_slice(&56u16.to_le_bytes());
+        elf[56..58].copy_from_slice(&1u16.to_le_bytes());
+        elf[58..60].copy_from_slice(&64u16.to_le_bytes());
+        elf[60..62].copy_from_slice(&1u16.to_le_bytes());
+        elf[62..64].copy_from_slice(&0u16.to_le_bytes());
+        assert!(unsafe { omg_loader_core_validate_elf64_aarch64(elf.as_ptr(), elf.len()) });
+        assert!(!unsafe { omg_loader_core_validate_elf64_aarch64(elf.as_ptr(), 63) });
+        assert!(!unsafe { omg_loader_core_validate_elf64_aarch64(std::ptr::null(), elf.len()) });
+        assert!(!unsafe { omg_loader_core_validate_elf64_aarch64(elf.as_ptr(), 64) });
+        elf[18..20].copy_from_slice(&62u16.to_le_bytes());
+        assert!(!unsafe { omg_loader_core_validate_elf64_aarch64(elf.as_ptr(), elf.len()) });
+    }
+
     #[test]
     fn exposes_monitor_lifecycle_transitions() {
         assert_eq!(omg_loader_core_monitor_transition(1, 2), 2);
