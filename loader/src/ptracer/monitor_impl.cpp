@@ -284,7 +284,7 @@ bool AppMonitor::SocketHandler::Init() {
     return true;
 }
 
-void AppMonitor::SocketHandler::HandleEvent([[maybe_unused]] EventLoop &loop, uint32_t) {
+void AppMonitor::SocketHandler::HandleEvent(EventLoop &loop, uint32_t) {
     for (;;) {
         // MSG_TRUNC reports the complete datagram size even though only one
         // byte is copied. Bound it before allocating or parsing attacker input.
@@ -292,9 +292,11 @@ void AppMonitor::SocketHandler::HandleEvent([[maybe_unused]] EventLoop &loop, ui
         const ssize_t packet_size =
             recv(sock_fd_, &peek_byte, sizeof(peek_byte), MSG_PEEK | MSG_TRUNC);
         if (packet_size == -1) {
+            if (errno == EINTR) continue;
             if (errno == EAGAIN) break;
             PLOGE("SocketHandler: recv(peek)");
-            continue;
+            loop.Stop();
+            break;
         }
 
         constexpr size_t kMaxControlPacket = 8 + 64 * 1024;
@@ -309,8 +311,11 @@ void AppMonitor::SocketHandler::HandleEvent([[maybe_unused]] EventLoop &loop, ui
         buf_.resize(static_cast<size_t>(packet_size));
         const ssize_t received = recv(sock_fd_, buf_.data(), buf_.size(), 0);
         if (received == -1) {
+            if (errno == EINTR) continue;
+            if (errno == EAGAIN) break;
             PLOGE("SocketHandler: recv(read)");
-            continue;
+            loop.Stop();
+            break;
         }
         if (received != packet_size) {
             LOGE("SocketHandler: expected %zd bytes, but received %zd", packet_size, received);
@@ -436,17 +441,24 @@ void AppMonitor::SigChldHandler::HandleEvent(EventLoop &, uint32_t) {
         struct signalfd_siginfo fdsi;
         ssize_t s = read(signal_fd_, &fdsi, sizeof(fdsi));
         if (s == -1) {
+            if (errno == EINTR) continue;
             if (errno == EAGAIN) break;
             PLOGE("read signalfd");
-            continue;
+            break;
         }
         if (s != sizeof(fdsi) || fdsi.ssi_signo != SIGCHLD) {
             continue;
         }
 
         int pid;
-        while ((pid = waitpid(-1, &status_, __WALL | WNOHANG)) > 0) {
-            handleChildEvent(pid, status_);
+        for (;;) {
+            pid = waitpid(-1, &status_, __WALL | WNOHANG);
+            if (pid > 0) {
+                handleChildEvent(pid, status_);
+                continue;
+            }
+            if (pid == -1 && errno == EINTR) continue;
+            break;
         }
         if (pid == -1 && errno != ECHILD && monitor_.get_tracing_state() != STOPPED) {
             PLOGE("waitpid");
