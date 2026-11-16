@@ -35,7 +35,7 @@ const DEV_STATE = [
 	"M|tricky_store|Tricky Store|v1.2.1|5ec1cff|1|0|Spoof keybox on devices with broken TEE|1|0|0",
 	"M|" +
 		DEV_FIXTURE_ID +
-		"|Development fixture|v0.0.0|OnyxZygisk|1|1|Canned row served by the development bridge|0|0|1",
+		"|Development fixture|v0.0.0|OmgZygisk|1|1|Canned row served by the development bridge|0|0|1",
 	"@@fn",
 	"F|net_guard|Network Guard|1.0|app|com.bank.*|enabled",
 	"F|prop_shield|Property Shield|2.1|system_server|all|disabled",
