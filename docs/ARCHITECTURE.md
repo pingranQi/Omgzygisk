@@ -52,6 +52,10 @@ length-bounded before parsing.
 - The daemon is already implemented in Rust.
 - The loader has a platform-independent Rust crate for control packets, IPC
   primitives, descriptor ownership and monitor state transitions.
+- The low-level stream I/O and file-descriptor receive helpers in
+  `loader/src/common/socket_utils.c` are implemented in C11. The existing
+  C++ call sites use temporary inline compatibility wrappers in
+  `socket_utils.hpp`; the socket implementation itself is no longer C++.
 - The crate exports a versioned C ABI and builds as both an Rust library and
   an Android ARM64 static library.
 - CMake builds the Rust static library with cargo-ndk and links it into the
@@ -82,12 +86,13 @@ or root-manager security controls.
 ## Suggested migration order
 
 1. Keep the C ABI narrow and verify every Android ARM64 link.
-2. Move protocol parsing and monitor lifecycle decisions behind the Rust core.
-3. Move platform-independent ELF metadata parsing into Rust while retaining
-   linker-specific accessors in C.
-4. Inventory upstream-derived wrappers and remove layers that only forward
+2. Continue moving platform-independent protocol parsing and lifecycle policy
+   into the Rust core; avoid maintaining duplicate C++ policy.
+3. Convert remaining generic native utilities to C11 where they do not depend
+   on C++ ownership or platform-specific C++ ABI contracts.
+4. Keep linker, JNI, ptrace and hook integration isolated behind narrow native
+   adapters; do not rewrite those paths solely to change language.
+5. Inventory upstream-derived wrappers and remove layers that only forward
    calls or duplicate state; retain required ABI shims and license notices.
-5. Consolidate existing process-isolation configuration and policy without
+6. Consolidate existing process-isolation configuration and policy without
    adding new stealth or security-evasion behavior.
-6. Reduce the remaining C++ surface to unavoidable third-party or Android ABI
-   adapters, with explicit ownership and thread-safety contracts.
