@@ -85,18 +85,18 @@ export function FnView({ snapshot, onRefresh, onNotify }: FnViewProps) {
 							<div key={fn.id}>
 								{index > 0 ? <SettingRowSeparator /> : null}
 								<SettingRowSwitch
-								controlId={`fn-${fn.id}`}
-								title={fn.name || fn.id}
-								summary={[
-									formatVersion(fn.version),
-									fn.trigger || tr("fn_trigger_default", "app"),
-									fn.scope || tr("fn_scope_default", "all"),
-									statusLabel(fn.status),
-								].join(" · ")}
-								checked={fn.status === "enabled"}
-								disabled={busyId === fn.id}
-								onChange={(next) => void toggle(fn.id, next)}
-							/>
+									controlId={`fn-${fn.id}`}
+									title={fn.name || fn.id}
+									summary={[
+										formatVersion(fn.version),
+										fn.trigger || tr("fn_trigger_default", "app"),
+										fn.scope || tr("fn_scope_default", "all"),
+										statusLabel(fn.status),
+									].join(" · ")}
+									checked={fn.status === "enabled"}
+									disabled={busyId === fn.id}
+									onChange={(next) => void toggle(fn.id, next)}
+								/>
 							</div>
 						))}
 					</SettingRowList>
