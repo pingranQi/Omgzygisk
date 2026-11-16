@@ -34,7 +34,9 @@ typedef int (*onyx_proc_map_callback)(const onyx_proc_map_entry *entry, void *co
 void onyx_proc_maps_parse_line(const char *line, size_t length,
                                onyx_proc_map_callback callback, void *context);
 
-/* Open and parse /proc/<pid>/maps; returns 0 on success, -1 on I/O failure. */
+/* Open and parse /proc/<pid>/maps (pid is 'self' or decimal digits);
+ * returns 0 on success and -1 for invalid input or I/O failure.
+ */
 int onyx_proc_maps_scan(const char *pid, onyx_proc_map_callback callback, void *context);
 
 #ifdef __cplusplus
