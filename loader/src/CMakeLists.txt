@@ -1,7 +1,10 @@
 cmake_minimum_required(VERSION 3.22.1)
 project("loader" C CXX)
 
+set(CMAKE_C_STANDARD 18)
+set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Optional host-side validation for the platform-independent Rust loader
 # primitives.
@@ -54,11 +57,6 @@ target_include_directories(common PRIVATE include)
 target_link_libraries(common log)
 
 aux_source_directory(injector INJECTOR_SRC_LIST)
-# Explicitly list files that aux_source_directory may miss on incremental
-# reconfigures (CMake only rescans the dir at configure time, and Gradle's
-# Android plugin does not always reconfigure when a file is added).
-list(APPEND INJECTOR_SRC_LIST
-    ${CMAKE_CURRENT_SOURCE_DIR}/injector/ptrace_clear.cpp)
 add_library(zygisk SHARED ${INJECTOR_SRC_LIST})
 target_compile_options(zygisk PRIVATE -Wno-invalid-offsetof -Wno-unused-private-field)
 target_include_directories(zygisk PRIVATE include external/dobby/include)
