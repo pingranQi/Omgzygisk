@@ -1,8 +1,6 @@
-# Dependabot — GitHub 官方依赖更新机器人
-# 自动检查依赖新版本并开 PR，由管理员审阅后合并。
+# Dependabot — keep build tooling and application dependencies current.
 version: 2
 updates:
-  # WebUI (React 19 + Vite + Tailwind CSS, Biome + Playwright) 依赖
   - package-ecosystem: "npm"
     directory: "/zygiskd/webui"
     schedule:
@@ -11,7 +9,6 @@ updates:
     commit-message:
       prefix: "chore(deps)"
 
-  # Gradle / AGP / Kotlin 依赖
   - package-ecosystem: "gradle"
     directory: "/"
     schedule:
@@ -19,3 +16,27 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: "chore(deps)"
+
+  - package-ecosystem: "cargo"
+    directory: "/loader/rustcore"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: "cargo"
+    directory: "/zygiskd"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(ci)"
