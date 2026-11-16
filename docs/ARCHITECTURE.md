@@ -59,9 +59,9 @@ length-bounded before parsing.
 - The monitor's Unix datagram control-packet framing and command validation
   now run through the Rust decoder. C++ retains socket I/O and dispatches the
   validated command to existing platform operations.
-- Monitor lifecycle transition rules are now owned by the Rust core and
-  exposed through the same narrow C ABI. C++ retains event-loop, ptrace and
-  status-file side effects; it no longer decides legal state transitions.
+- Monitor lifecycle transition rules and zygote crash-loop accounting are
+  owned by the Rust core and exposed through the same narrow C ABI. C++ retains
+  monotonic clock reads, event-loop, ptrace and status-file side effects.
 - Android linker, ptrace, JNI and hook adapters remain in C++ until their
   replacements are individually migrated and device-validated; the complete
   injector has not yet been ported.
