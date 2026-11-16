@@ -1,9 +1,10 @@
 #include "files_c.h"
 
 #include <stdlib.h>
+#include <sys/types.h>
 #include <string.h>
 
-void omg_file_readline(FILE *stream, int trim, omg_file_line_callback callback, void *context) {
+void omg_file_readline(FILE *stream, int trim, omg_file_line_callback callback, const void *context) {
     if (stream == NULL || callback == NULL) {
         return;
     }
