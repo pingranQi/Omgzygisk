@@ -8,6 +8,7 @@
 #include "daemon.hpp"
 #include "logging.hpp"
 #include "monitor.hpp"
+#include "omg_loader_core.h"
 #include "utils.hpp"
 
 ZygoteAbiManager::ZygoteAbiManager(AppMonitor& monitor, bool is_64bit)
@@ -34,7 +35,7 @@ void ZygoteAbiManager::notify_injected() {
     // threshold and made `is_in_crash_loop` stop monitoring a perfectly
     // healthy device.
     counter.count = 0;
-    counter.last_start_time = {.tv_sec = 0, .tv_nsec = 0};
+    counter.last_start_seconds = 0;
 }
 
 void ZygoteAbiManager::set_daemon_info(std::string_view info) { status_.daemon_info = info; }
@@ -62,17 +63,15 @@ bool ZygoteAbiManager::is_in_crash_loop() {
     // generation; capture the value before that happens.
     bool count_this_time = previous_was_running;
 
-    if (count_this_time) {
-        if (now.tv_sec - counter.last_start_time.tv_sec <
-            ZygoteAbiManager::CRASH_LOOP_WINDOW_SECONDS) {
-            counter.count++;
-        } else {
-            counter.count = 1;
-        }
-        counter.last_start_time = now;
-    }
+    const bool crash_loop = omg_loader_core_crash_loop_update(
+        &counter.count,
+        &counter.last_start_seconds,
+        static_cast<int64_t>(now.tv_sec),
+        count_this_time,
+        ZygoteAbiManager::CRASH_LOOP_WINDOW_SECONDS,
+        ZygoteAbiManager::CRASH_LOOP_RETRY_COUNT);
 
-    if (counter.count >= ZygoteAbiManager::CRASH_LOOP_RETRY_COUNT) {
+    if (crash_loop) {
         LOGE("detected zygote crash loop: %d restarts within %d seconds",
              counter.count, ZygoteAbiManager::CRASH_LOOP_WINDOW_SECONDS);
         return true;

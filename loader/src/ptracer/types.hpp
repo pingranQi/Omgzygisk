@@ -1,6 +1,7 @@
 #pragma once
 
 #include <sys/types.h>
+#include <cstdint>
 
 #include <string>
 
@@ -18,6 +19,6 @@ struct Status {
 };
 
 struct StartCounter {
-    struct timespec last_start_time{.tv_sec = 0, .tv_nsec = 0};
-    int count = 0;
+    int64_t last_start_seconds = 0;
+    uint32_t count = 0;
 };

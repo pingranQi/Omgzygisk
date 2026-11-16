@@ -1,21 +1,43 @@
 cmake_minimum_required(VERSION 3.22.1)
 project("loader" C CXX)
 
-set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD 20)
 
-# Optional host-side validation for the platform-independent Rust loader
-# primitives. The Rust core is not linked into the Android runtime yet:
-# Android's Zygisk ABI and third-party linker/hook libraries remain a
-# separate compatibility boundary.
-option(ONYX_BUILD_RUSTCORE_TESTS "Expose the platform-independent Rust tests" OFF)
-if(ONYX_BUILD_RUSTCORE_TESTS)
-    find_program(CARGO_EXECUTABLE cargo REQUIRED)
-    add_custom_target(rustcore-test
-        COMMAND ${CARGO_EXECUTABLE} test
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../rustcore
-        COMMENT "Running Rust loader-core tests"
-        VERBATIM)
+# Build the platform-independent Rust loader core for the Android target.
+# cargo-ndk is already part of the repository's Android Rust toolchain.
+find_program(CARGO_EXECUTABLE cargo REQUIRED)
+set(RUSTCORE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../rustcore)
+set(RUSTCORE_TARGET_DIR ${CMAKE_CURRENT_BINARY_DIR}/rustcore-target)
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(RUSTCORE_PROFILE debug)
+    set(RUSTCORE_PROFILE_ARGS)
+else()
+    set(RUSTCORE_PROFILE release)
+    set(RUSTCORE_PROFILE_ARGS --release)
 endif()
+set(RUSTCORE_ARCHIVE
+    ${RUSTCORE_TARGET_DIR}/aarch64-linux-android/${RUSTCORE_PROFILE}/libomgzygisk_loader_core.a)
+
+add_custom_command(
+    OUTPUT ${RUSTCORE_ARCHIVE}
+    COMMAND ${CARGO_EXECUTABLE} ndk --platform 26 -t arm64-v8a build
+            --locked --target-dir ${RUSTCORE_TARGET_DIR} ${RUSTCORE_PROFILE_ARGS}
+    WORKING_DIRECTORY ${RUSTCORE_DIR}
+    DEPENDS
+        ${RUSTCORE_DIR}/Cargo.toml
+        ${RUSTCORE_DIR}/Cargo.lock
+        ${RUSTCORE_DIR}/src/lib.rs
+        ${RUSTCORE_DIR}/src/ffi.rs
+        ${RUSTCORE_DIR}/src/control.rs
+        ${RUSTCORE_DIR}/src/ipc.rs
+        ${RUSTCORE_DIR}/src/fd.rs
+        ${RUSTCORE_DIR}/src/monitor.rs
+    COMMENT "Building OmgZygisk Rust loader core for Android ARM64"
+    VERBATIM)
+add_custom_target(omg_rust_core_build DEPENDS ${RUSTCORE_ARCHIVE})
+add_library(omg_rust_core STATIC IMPORTED GLOBAL)
+set_target_properties(omg_rust_core PROPERTIES IMPORTED_LOCATION ${RUSTCORE_ARCHIVE})
+add_dependencies(omg_rust_core omg_rust_core_build)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -28,8 +50,8 @@ add_definitions(-DWORK_DIRECTORY=\"${WORK_DIRECTORY}\")
 
 aux_source_directory(common COMMON_SRC_LIST)
 add_library(common STATIC ${COMMON_SRC_LIST})
-target_include_directories(common PRIVATE include)
-target_link_libraries(common log)
+target_include_directories(common PRIVATE include ../rustcore/include)
+target_link_libraries(common log omg_rust_core)
 
 aux_source_directory(injector INJECTOR_SRC_LIST)
 # Explicitly list files that aux_source_directory may miss on incremental
@@ -44,7 +66,7 @@ target_link_libraries(zygisk log common lsplt_static csoloader dobby)
 
 aux_source_directory(ptracer PTRACER_SRC_LIST)
 add_executable(libzygisk_ptrace.so ${PTRACER_SRC_LIST})
-target_include_directories(libzygisk_ptrace.so PRIVATE include)
-target_link_libraries(libzygisk_ptrace.so log common)
+target_include_directories(libzygisk_ptrace.so PRIVATE include ../rustcore/include)
+target_link_libraries(libzygisk_ptrace.so log common omg_rust_core dl m)
 
 add_subdirectory(external)

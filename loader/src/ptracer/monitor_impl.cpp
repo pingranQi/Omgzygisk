@@ -15,6 +15,7 @@
 #include "files.hpp"
 #include "logging.hpp"
 #include "monitor.hpp"
+#include "omg_loader_core.h"
 #include "utils.hpp"
 
 namespace {
@@ -92,8 +93,6 @@ AppMonitor::AppMonitor()
 ZygoteAbiManager &AppMonitor::get_abi_manager() { return zygote_; }
 
 TracingState AppMonitor::get_tracing_state() const { return tracing_state_; }
-
-void AppMonitor::set_tracing_state(TracingState state) { tracing_state_ = state; }
 
 void AppMonitor::write_abi_status_section(std::string &status_text, const Status &daemon_status) {
     auto abi_name = this->zygote_.abi_name_;
@@ -215,36 +214,45 @@ void AppMonitor::run() {
 }
 
 void AppMonitor::request_start() {
-    if (tracing_state_ == STOPPING)
-        tracing_state_ = TRACING;
-    else if (tracing_state_ == STOPPED) {
+    const auto next = omg_loader_core_monitor_transition(tracing_state_, 1);
+    if (next == 0 || next == tracing_state_) return;
+
+    if (tracing_state_ == STOPPED) {
         ptrace(PTRACE_SEIZE, 1, 0, PTRACE_O_TRACEFORK);
         LOGI("start tracing init");
-        tracing_state_ = TRACING;
     }
+    tracing_state_ = static_cast<TracingState>(next);
+    monitor_stop_reason_.clear();
     update_status();
 }
 
 void AppMonitor::request_stop(std::string reason) {
-    if (tracing_state_ == TRACING) {
-        LOGI("stop tracing requested");
-        tracing_state_ = STOPPING;
-        monitor_stop_reason_ = std::move(reason);
-        ptrace(PTRACE_INTERRUPT, 1, 0, 0);
-        update_status();
-    }
+    const auto next = omg_loader_core_monitor_transition(tracing_state_, 2);
+    if (next == 0 || next == tracing_state_) return;
+
+    LOGI("stop tracing requested");
+    tracing_state_ = static_cast<TracingState>(next);
+    monitor_stop_reason_ = std::move(reason);
+    ptrace(PTRACE_INTERRUPT, 1, 0, 0);
+    update_status();
 }
 
 void AppMonitor::request_exit() {
+    const auto next = omg_loader_core_monitor_transition(tracing_state_, 4);
+    if (next == 0 || next == tracing_state_) return;
+
     LOGI("prepare for exit ...");
-    tracing_state_ = EXITING;
+    tracing_state_ = static_cast<TracingState>(next);
     monitor_stop_reason_ = "user requested";
     update_status();
     event_loop_.Stop();
 }
 
 void AppMonitor::notify_init_detached() {
-    tracing_state_ = STOPPED;
+    const auto next = omg_loader_core_monitor_transition(tracing_state_, 3);
+    if (next == 0 || next == tracing_state_) return;
+
+    tracing_state_ = static_cast<TracingState>(next);
     LOGI("stop tracing init");
 }
 
@@ -278,45 +286,47 @@ bool AppMonitor::SocketHandler::Init() {
 
 void AppMonitor::SocketHandler::HandleEvent([[maybe_unused]] EventLoop &loop, uint32_t) {
     for (;;) {
-        buf_.resize(sizeof(MsgHead));
-        MsgHead &msg_header = *reinterpret_cast<MsgHead *>(buf_.data());
-        ssize_t nread = recv(sock_fd_, &msg_header, sizeof(MsgHead), MSG_PEEK | MSG_TRUNC);
-        if (nread == -1) {
+        // MSG_TRUNC reports the complete datagram size even though only one
+        // byte is copied. Bound it before allocating or parsing attacker input.
+        uint8_t peek_byte = 0;
+        const ssize_t packet_size =
+            recv(sock_fd_, &peek_byte, sizeof(peek_byte), MSG_PEEK | MSG_TRUNC);
+        if (packet_size == -1) {
             if (errno == EAGAIN) break;
             PLOGE("SocketHandler: recv(peek)");
             continue;
         }
-        ssize_t real_size;
-        if (msg_header.cmd >= Command::DAEMON_SET_INFO &&
-            msg_header.cmd != Command::SYSTEM_SERVER_STARTED) {
-            if (static_cast<size_t>(nread) < sizeof(MsgHead)) {
-                LOGE("SocketHandler: received incomplete header for cmd %d, size %zd",
-                     msg_header.cmd, nread);
-                recv(sock_fd_, buf_.data(), buf_.size(), 0);
-                continue;
-            }
-            real_size = sizeof(MsgHead) + msg_header.length;
-        } else {
-            if (static_cast<size_t>(nread) != sizeof(Command)) {
-                LOGE("SocketHandler: received invalid size for cmd %d, size %zd", msg_header.cmd,
-                     nread);
-                recv(sock_fd_, buf_.data(), buf_.size(), 0);
-                continue;
-            }
-            real_size = sizeof(Command);
-        }
-        buf_.resize(real_size);
-        MsgHead &full_msg = *reinterpret_cast<MsgHead *>(buf_.data());
-        nread = recv(sock_fd_, &full_msg, real_size, 0);
-        if (nread == -1) {
-            PLOGE("recv(read)");
-            continue;
-        }
-        if (nread != real_size) {
-            LOGE("SocketHandler: expected %zd bytes, but received %zd", real_size, nread);
+
+        constexpr size_t kMaxControlPacket = 8 + 64 * 1024;
+        if (packet_size < static_cast<ssize_t>(sizeof(Command)) ||
+            static_cast<size_t>(packet_size) > kMaxControlPacket) {
+            LOGE("SocketHandler: invalid control datagram size %zd", packet_size);
+            uint8_t discard = 0;
+            recv(sock_fd_, &discard, sizeof(discard), 0);
             continue;
         }
 
+        buf_.resize(static_cast<size_t>(packet_size));
+        const ssize_t received = recv(sock_fd_, buf_.data(), buf_.size(), 0);
+        if (received == -1) {
+            PLOGE("SocketHandler: recv(read)");
+            continue;
+        }
+        if (received != packet_size) {
+            LOGE("SocketHandler: expected %zd bytes, but received %zd", packet_size, received);
+            continue;
+        }
+
+        // Packet framing and command validation are owned by the Rust core.
+        // The buffer remains C++-owned; Rust only borrows it for this call.
+        const int32_t validation =
+            omg_loader_core_validate_control_packet(buf_.data(), buf_.size());
+        if (validation != 0) {
+            LOGE("SocketHandler: Rust core rejected control packet (code %d)", validation);
+            continue;
+        }
+
+        MsgHead &full_msg = *reinterpret_cast<MsgHead *>(buf_.data());
         switch (full_msg.cmd) {
         case START:
             monitor_.request_start();

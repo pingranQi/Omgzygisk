@@ -4,11 +4,34 @@
 //! adapter. This module only owns legal state transitions and crash accounting.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub enum TracingState {
-    Tracing,
-    Stopping,
-    Stopped,
-    Exiting,
+    Tracing = 1,
+    Stopping = 2,
+    Stopped = 3,
+    Exiting = 4,
+}
+
+/// Apply a lifecycle event to a serialized state value.
+/// Unknown state or event values return 0 and are never interpreted as valid.
+pub fn transition(state: u8, event: u8) -> u8 {
+    let current = match state {
+        1 => TracingState::Tracing,
+        2 => TracingState::Stopping,
+        3 => TracingState::Stopped,
+        4 => TracingState::Exiting,
+        _ => return 0,
+    };
+
+    let next = match event {
+        1 if matches!(current, TracingState::Stopping | TracingState::Stopped) => TracingState::Tracing,
+        2 if current == TracingState::Tracing => TracingState::Stopping,
+        3 if current == TracingState::Stopping => TracingState::Stopped,
+        4 => TracingState::Exiting,
+        1..=4 => current,
+        _ => return 0,
+    };
+    next as u8
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -108,6 +131,17 @@ impl<'a> Monitor<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lifecycle_transition_table_is_stable_and_rejects_unknown_values() {
+        assert_eq!(transition(1, 2), 2); // tracing -> stopping
+        assert_eq!(transition(2, 3), 3); // stopping -> stopped
+        assert_eq!(transition(3, 1), 1); // stopped -> tracing
+        assert_eq!(transition(4, 1), 4); // exiting is terminal
+        assert_eq!(transition(1, 3), 1); // detach outside stopping is ignored
+        assert_eq!(transition(0, 1), 0);
+        assert_eq!(transition(1, 99), 0);
+    }
 
     #[test]
     fn counts_only_running_zygote_restarts() {
