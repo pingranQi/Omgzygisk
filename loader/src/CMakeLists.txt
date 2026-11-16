@@ -17,6 +17,30 @@ if(ONYX_BUILD_RUSTCORE_TESTS)
         VERBATIM)
 endif()
 
+# Build the portable Rust core for the ARM64 Android adapter. The Rust
+# crate owns monitor state and exposes only a small C ABI; platform syscalls
+# and ptrace remain in the native adapter.
+find_program(CARGO_EXECUTABLE cargo REQUIRED)
+set(RUSTCORE_MANIFEST ${CMAKE_CURRENT_SOURCE_DIR}/../rustcore/Cargo.toml)
+set(RUSTCORE_TARGET_DIR ${CMAKE_CURRENT_BINARY_DIR}/rustcore-target)
+set(RUSTCORE_LIBRARY ${RUSTCORE_TARGET_DIR}/aarch64-linux-android/release/libonyxzygisk_loader_core.a)
+add_custom_command(
+    OUTPUT ${RUSTCORE_LIBRARY}
+    COMMAND ${CMAKE_COMMAND} -E env CARGO_TARGET_DIR=${RUSTCORE_TARGET_DIR}
+            ${CARGO_EXECUTABLE} build --manifest-path ${RUSTCORE_MANIFEST}
+            --target aarch64-linux-android --release
+    DEPENDS
+        ${RUSTCORE_MANIFEST}
+        ${CMAKE_CURRENT_SOURCE_DIR}/../rustcore/src/lib.rs
+        ${CMAKE_CURRENT_SOURCE_DIR}/../rustcore/src/ffi.rs
+        ${CMAKE_CURRENT_SOURCE_DIR}/../rustcore/src/monitor.rs
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../rustcore
+    COMMENT "Building Rust monitor core for Android ARM64"
+    VERBATIM)
+add_custom_target(rustcore-android DEPENDS ${RUSTCORE_LIBRARY})
+add_library(zygisk_rustcore STATIC IMPORTED GLOBAL)
+set_target_properties(zygisk_rustcore PROPERTIES IMPORTED_LOCATION ${RUSTCORE_LIBRARY})
+
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 add_definitions(-DZKSU_VERSION=\"${ZKSU_VERSION}\")
@@ -45,6 +69,7 @@ target_link_libraries(zygisk log common lsplt_static csoloader dobby)
 aux_source_directory(ptracer PTRACER_SRC_LIST)
 add_executable(libzygisk_ptrace.so ${PTRACER_SRC_LIST})
 target_include_directories(libzygisk_ptrace.so PRIVATE include)
-target_link_libraries(libzygisk_ptrace.so log common)
+add_dependencies(libzygisk_ptrace.so rustcore-android)
+target_link_libraries(libzygisk_ptrace.so log common zygisk_rustcore dl m)
 
 add_subdirectory(external)
