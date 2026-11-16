@@ -51,7 +51,7 @@ add_definitions(-DWORK_DIRECTORY=\"${WORK_DIRECTORY}\")
 # Apply size-oriented options before creating targets so they also cover the
 # bundled native dependencies. Directory options are appended after the NDK
 # Release defaults, keeping -Oz effective instead of being overridden by -O2.
-if(CMAKE_BUILD_TYPE STREQUAL "Release")
+if(CMAKE_BUILD_TYPE MATCHES "^(Release|RelWithDebInfo)$")
     add_compile_options(
         "$<$<COMPILE_LANGUAGE:C,CXX>:-Oz>"
         "$<$<COMPILE_LANGUAGE:C,CXX>:-flto>"
