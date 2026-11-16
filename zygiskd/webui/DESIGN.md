@@ -517,7 +517,7 @@ No component hard-codes user-visible copy. Strings arrive from `i18n`, and the c
 need them together (a picker's options, a row's title and summary) take them as a `labels` prop,
 so the owning view supplies the translation rather than the component inventing one.
 
-Product and author names are not translation keys. `MODULE_NAME` and `MODULE_AUTHORS` in
+The product name is not a translation key. `MODULE_NAME` in
 `module_info.ts` hold them: they are proper nouns, and they read the same in every locale, so a
 translator must not be able to change them.
 
