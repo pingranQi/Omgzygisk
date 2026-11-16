@@ -95,11 +95,23 @@ size_t read_usize(int fd) { return omg_loader_core_read_usize(fd); }
 bool write_usize(int fd, size_t val) { return omg_loader_core_write_usize(fd, val); }
 
 std::string read_string(int fd) {
-    auto len = read_usize(fd);
-    char* buf = new char[len + 1];
-    buf[len] = '\0';
-    xread(fd, buf, len);
-    return buf;
+    // Keep the C++ stream reader in lockstep with the Rust IPC codec. A
+    // corrupt length must never trigger an unbounded allocation or len + 1
+    // overflow in this long-lived process.
+    constexpr size_t kMaxStringBytes = 1024 * 1024;
+    const size_t len = read_usize(fd);
+    if (len > kMaxStringBytes) {
+        LOGE("read_string: rejecting oversized field (%zu bytes)", len);
+        shutdown(fd, SHUT_RDWR);
+        return {};
+    }
+
+    std::string value(len, '\\0');
+    if (len != 0 && xread(fd, value.data(), len) != static_cast<ssize_t>(len)) {
+        shutdown(fd, SHUT_RDWR);
+        return {};
+    }
+    return value;
 }
 
 bool write_u8(int fd, uint8_t val) { return omg_loader_core_write_u8(fd, val); }
