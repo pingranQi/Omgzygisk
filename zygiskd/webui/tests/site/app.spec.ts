@@ -18,7 +18,7 @@ test.describe("status", () => {
 		// The app bar names the module, not the page: the navigation bar already
 		// marks which page is current.
 		await expect(
-			page.locator("header").getByRole("heading", { name: "OnyxZygisk" }),
+			page.locator("header").getByRole("heading", { name: "OmgZygisk" }),
 		).toBeVisible();
 	});
 
@@ -314,13 +314,11 @@ test.describe("settings", () => {
 			.toBeLessThan(before);
 	});
 
-	test("credits the module authors", async ({ page }) => {
+	test("does not display legacy fork contributor credits", async ({ page }) => {
 		await page.goto("/");
 		await gotoPage(page, "Settings");
-		await expect(main(page).getByText("Authors")).toBeVisible();
-		await expect(
-			main(page).getByText("Sai · Matsuzaka Yuki", { exact: true }),
-		).toBeVisible();
+		await expect(main(page).getByText("Authors")).toHaveCount(0);
+		await expect(main(page).getByText("Sai", { exact: true })).toHaveCount(0);
 	});
 
 	// Overlays own one history entry each, so the Android back gesture closes
