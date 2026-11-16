@@ -16,7 +16,6 @@ memfd = "0.6"
 num_enum = "0.7"
 passfd = "0.1"
 procfs = "0.18"
-proc-maps = "0.4"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 
 rustix = { git = "https://github.com/JingMatrix/rustix", branch = "main", features = [ "fs", "net", "pipe", "thread" ] }
