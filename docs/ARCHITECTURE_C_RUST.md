@@ -54,7 +54,7 @@ This is an incremental migration. It must preserve the existing Zygisk/ZN ABI, d
 - Convert independent procedural `.cpp` units to `.c`; the ptrace cleanup, socket transport, file line reader, and proc maps parser are the first converted units.
 - Replace C++-only headers with C-compatible headers; retain only small inline C++ convenience wrappers where current callers still use C++ strings.
 - Keep classes and upstream C++ dependencies behind narrow adapter boundaries until each subsystem has a tested C/Rust replacement.
-- The proc maps text parser emits a bounded C callback view; the C++ adapter only materializes the existing `MapInfo` vector. Executable-path lookup and `process_vm_readv` / `process_vm_writev` are also behind C APIs; C++ retains logging and existing call-site compatibility. Continue migrating remaining procedural helpers only after their ownership and call contracts are separated from C++ containers.
+- The proc maps text parser emits a bounded C callback view; the C++ adapter only materializes the existing `MapInfo` vector. Executable-path lookup, EINTR-safe `waitpid`, and `process_vm_readv` / `process_vm_writev` are also behind C APIs; C++ retains ptrace event policy, logging, and existing call-site compatibility. Continue migrating remaining procedural helpers only after their ownership and call contracts are separated from C++ containers.
 
 ### Stage 3 — Move policy and data ownership to Rust
 
