@@ -300,8 +300,14 @@ pub unsafe extern "C" fn omg_loader_core_validate_elf64_aarch64(data: *const u8,
             let hash = &b[offset as usize..(offset + size) as usize];
             let buckets = u32::from_le_bytes(hash[0..4].try_into().unwrap()) as u64;
             let chains = u32::from_le_bytes(hash[4..8].try_into().unwrap()) as u64;
-            if 8u64.checked_add(4 * (buckets + chains)).is_none_or(|required| required > size) {
-                return false;
+            if buckets == 0 || chains == 0
+                || 8u64.checked_add(4 * (buckets + chains)).is_none_or(|required| required > size)
+            { return false; }
+            let table = &hash[8..];
+            for value in table.chunks_exact(4) {
+                if u32::from_le_bytes(value.try_into().unwrap()) as u64 >= chains {
+                    return false;
+                }
             }
         }
         if kind == 0x6ffffff6 {
@@ -312,6 +318,12 @@ pub unsafe extern "C" fn omg_loader_core_validate_elf64_aarch64(data: *const u8,
             if bloom == 0 || buckets == 0
                 || 16u64.checked_add(8 * bloom + 4 * buckets).is_none_or(|required| required > size)
             { return false; }
+            let sym_offset = u32::from_le_bytes(hash[4..8].try_into().unwrap()) as u64;
+            let bucket_start = 16 + (8 * bloom) as usize;
+            for bucket in hash[bucket_start..bucket_start + (4 * buckets) as usize].chunks_exact(4) {
+                let symbol = u32::from_le_bytes(bucket.try_into().unwrap()) as u64;
+                if symbol != 0 && symbol < sym_offset { return false; }
+            }
         }
     }
     true
