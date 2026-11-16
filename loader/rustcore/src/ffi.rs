@@ -102,6 +102,34 @@ pub unsafe extern "C" fn omg_loader_core_validate_control_packet(
     }
 }
 
+
+/// Validate an ELF64 little-endian AArch64 shared-object header and table bounds.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn omg_loader_core_validate_elf64_aarch64(data: *const u8, length: usize) -> bool {
+    if data.is_null() || length < 64 { return false; }
+    // SAFETY: caller provides length readable bytes; the minimum is checked above.
+    let b = unsafe { std::slice::from_raw_parts(data, length) };
+    if &b[0..4] != b"\x7fELF" || b[4] != 2 || b[5] != 1 || b[6] != 1
+        || u16::from_le_bytes([b[16], b[17]]) != 3
+        || u16::from_le_bytes([b[18], b[19]]) != 183
+        || u32::from_le_bytes(b[20..24].try_into().unwrap()) != 1
+        || u16::from_le_bytes([b[52], b[53]]) != 64
+    { return false; }
+    let phoff = u64::from_le_bytes(b[32..40].try_into().unwrap());
+    let shoff = u64::from_le_bytes(b[40..48].try_into().unwrap());
+    let phentsize = u16::from_le_bytes([b[54], b[55]]);
+    let phnum = u16::from_le_bytes([b[56], b[57]]);
+    let shentsize = u16::from_le_bytes([b[58], b[59]]);
+    let shnum = u16::from_le_bytes([b[60], b[61]]);
+    let shstrndx = u16::from_le_bytes([b[62], b[63]]);
+    if phentsize != 56 || shentsize != 64 || shnum == 0 || shstrndx >= shnum {
+        return false;
+    }
+    let ph_end = phoff.checked_add(u64::from(phentsize) * u64::from(phnum));
+    let sh_end = shoff.checked_add(u64::from(shentsize) * u64::from(shnum));
+    matches!((ph_end, sh_end), (Some(p), Some(s)) if p <= length as u64 && s <= length as u64)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
