@@ -12,6 +12,14 @@ extern "C" {
 /* Must match the ABI version reported by the linked Rust static library. */
 uint32_t omg_loader_core_abi_version(void);
 
+/*
+ * Apply a monitor lifecycle event.
+ * States: tracing=1, stopping=2, stopped=3, exiting=4.
+ * Events: start=1, stop=2, detached=3, exit=4.
+ * Returns 0 for an unknown state or event.
+ */
+uint8_t omg_loader_core_monitor_transition(uint8_t state, uint8_t event);
+
 /* Returns false for unknown daemon protocol action values. */
 bool omg_loader_core_validate_daemon_action(uint8_t action);
 
