@@ -235,7 +235,10 @@ export function StatusView({ snapshot }: StatusViewProps) {
 					<Divider />
 					<StatusField
 						label={tr("status_zn_api", "Native ZN API")}
-						value={tr("status_zn_api_experimental", "Implemented (experimental)")}
+						value={tr(
+							"status_zn_api_experimental",
+							"Implemented (experimental)",
+						)}
 						tone="pending"
 					/>
 					<p className="text-onx-caption text-onx-muted">
