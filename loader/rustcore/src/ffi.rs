@@ -7,6 +7,14 @@ use crate::control::{self, Command};
 
 const MAX_CONTROL_PACKET_BYTES: usize = 8 + control::MAX_PAYLOAD_BYTES;
 
+/// Apply one monitor lifecycle event. State values: tracing=1, stopping=2,
+/// stopped=3, exiting=4. Event values: start=1, stop=2, detached=3, exit=4.
+/// Returns 0 for unknown state/event values.
+#[unsafe(no_mangle)]
+pub extern "C" fn omg_loader_core_monitor_transition(state: u8, event: u8) -> u8 {
+    crate::monitor::transition(state, event)
+}
+
 /// ABI version for compile-time/runtime compatibility checks.
 #[unsafe(no_mangle)]
 pub extern "C" fn omg_loader_core_abi_version() -> u32 {
@@ -60,6 +68,15 @@ pub unsafe extern "C" fn omg_loader_core_validate_control_packet(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn exposes_monitor_lifecycle_transitions() {
+        assert_eq!(omg_loader_core_monitor_transition(1, 2), 2);
+        assert_eq!(omg_loader_core_monitor_transition(2, 3), 3);
+        assert_eq!(omg_loader_core_monitor_transition(3, 1), 1);
+        assert_eq!(omg_loader_core_monitor_transition(4, 1), 4);
+        assert_eq!(omg_loader_core_monitor_transition(0, 1), 0);
+    }
 
     #[test]
     fn exports_stable_abi_version() {
