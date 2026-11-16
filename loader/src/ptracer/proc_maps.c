@@ -1,7 +1,6 @@
 #define _GNU_SOURCE
 #include "proc_maps.h"
 
-#include <ctype.h>
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -59,15 +58,18 @@ void onyx_proc_maps_parse_line(const char *line, size_t length,
 }
 
 int onyx_proc_maps_scan(const char *pid, onyx_proc_map_callback callback, void *context) {
-    if (pid == NULL || callback == NULL || pid[0] == '\0' || strchr(pid, '/') != NULL) {
-        return -1;
+    if (pid == NULL || callback == NULL || pid[0] == '\0') return -1;
+    if (strcmp(pid, "self") != 0) {
+        for (const unsigned char *p = (const unsigned char *)pid; *p != '\0'; ++p) {
+            if (*p < '0' || *p > '9') return -1;
+        }
     }
 
     char path[64];
     const int path_length = snprintf(path, sizeof(path), "/proc/%s/maps", pid);
     if (path_length < 0 || (size_t)path_length >= sizeof(path)) return -1;
 
-    FILE *stream = fopen(path, "re");
+    FILE *stream = fopen(path, "r");
     if (stream == NULL) return -1;
 
     char *line = NULL;
