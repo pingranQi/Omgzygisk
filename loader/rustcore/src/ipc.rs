@@ -169,6 +169,11 @@ impl Writer {
         &self.bytes
     }
 
+    /// Clear the current message while retaining its allocation for reuse.
+    pub fn clear(&mut self) {
+        self.bytes.clear();
+    }
+
     fn append(&mut self, bytes: &[u8]) -> Result<(), Error> {
         self.bytes
             .try_reserve(bytes.len())
@@ -199,8 +204,29 @@ impl Writer {
         if value.len() > MAX_STRING_BYTES {
             return Err(Error::InvalidLength);
         }
-        self.write_usize(value.len())?;
-        self.append(value)
+
+        // Reserve the length prefix and payload together. This avoids a
+        // second growth/reallocation when a fresh writer serializes a string.
+        let mut prefix = [0u8; 8];
+        let prefix_len = if usize::BITS == 32 {
+            let length = u32::try_from(value.len()).map_err(|_| Error::LengthOverflow)?;
+            prefix[..4].copy_from_slice(&length.to_le_bytes());
+            4
+        } else {
+            let length = u64::try_from(value.len()).map_err(|_| Error::LengthOverflow)?;
+            prefix.copy_from_slice(&length.to_le_bytes());
+            8
+        };
+
+        let additional = prefix_len
+            .checked_add(value.len())
+            .ok_or(Error::LengthOverflow)?;
+        self.bytes
+            .try_reserve(additional)
+            .map_err(|_| Error::OutOfMemory)?;
+        self.bytes.extend_from_slice(&prefix[..prefix_len]);
+        self.bytes.extend_from_slice(value);
+        Ok(())
     }
 }
 
@@ -233,6 +259,20 @@ mod tests {
         let oversized = (MAX_STRING_BYTES as u64 + 1).to_le_bytes();
         let mut reader = Reader::init(&oversized);
         assert_eq!(reader.read_string(), Err(Error::InvalidLength));
+    }
+
+    #[test]
+    fn writer_reuses_capacity_after_clear() {
+        let mut writer = Writer::new();
+        writer.write_string(&vec![b'x'; 4096]).unwrap();
+        let capacity = writer.bytes.capacity();
+        assert!(capacity >= 4096);
+
+        writer.clear();
+        assert!(writer.as_slice().is_empty());
+        writer.write_string(b"reused").unwrap();
+        assert_eq!(writer.bytes.capacity(), capacity);
+        assert_eq!(writer.as_slice().last(), Some(&b'd'));
     }
 
     #[test]
