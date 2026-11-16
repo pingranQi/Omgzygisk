@@ -982,7 +982,6 @@ dependencies = [
  "memfd",
  "num_enum",
  "passfd",
- "proc-maps",
  "procfs",
  "rustix",
  "zip",
