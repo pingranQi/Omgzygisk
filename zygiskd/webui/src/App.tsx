@@ -17,8 +17,8 @@ import {
 	snackbar,
 } from "./components/molecules/Snackbar";
 import { TopAppBar } from "./components/molecules/TopAppBar";
-import { MODULE_NAME } from "./module_info";
 import { useVisibleInterval } from "./hooks/useVisibleInterval";
+import { MODULE_NAME } from "./module_info";
 import {
 	EMPTY_SNAPSHOT,
 	loadSystemState,
